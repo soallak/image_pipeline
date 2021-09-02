@@ -13,6 +13,9 @@ endif()
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
+find_package(ament_vitis)
+find_package(vitis_common REQUIRED)
+find_package(OpenCL REQUIRED)
 find_package(OpenCV REQUIRED)
 if(OpenCV_VERSION VERSION_LESS "3.2.0")
   message(FATAL "Minimum OpenCV version is 3.2.0 (found version ${OpenCV_VERSION})")
@@ -55,6 +58,42 @@ target_compile_definitions(resize
 )
 rclcpp_components_register_nodes(resize "image_proc::ResizeNode")
 set(node_plugins "${node_plugins}image_proc::ResizeNode;$<TARGET_FILE:resize>\n")
+
+# resize_fpga component
+ament_auto_add_library(resize_fpga SHARED
+  src/resize_fpga.cpp
+)
+target_include_directories(resize_fpga PUBLIC
+  # $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/vitis_common>
+  $ENV{XILINX_HLS}/common/technology/autopilot
+  $ENV{XILINX_HLS}/include
+)
+target_link_libraries(resize_fpga
+  ${OpenCL_LIBRARY}
+)
+target_compile_definitions(resize_fpga
+  PRIVATE "COMPOSITION_BUILDING_DLL"
+)
+rclcpp_components_register_nodes(resize_fpga "image_proc::ResizeNodeFPGA")
+set(node_plugins "${node_plugins}image_proc::ResizeNodeFPGA;$<TARGET_FILE:resize_fpga>\n")
+
+if(ACCELERATION)
+  # vadd kernel
+  vitis_acceleration_kernel(
+    NAME resize_accel
+    FILE src/image_proc/xf_resize_accel.cpp
+    CONFIG src/kv260.cfg
+    # CONFIG src/zcu102.cfg
+    INCLUDE
+      include/image_proc
+      ${CMAKE_INSTALL_PREFIX}/include
+    TYPE
+      # sw_emu
+      # hw_emu
+      hw
+    PACKAGE
+  )
+endif()
 
 # crop_decimate library
 ament_auto_add_library(crop_decimate SHARED
