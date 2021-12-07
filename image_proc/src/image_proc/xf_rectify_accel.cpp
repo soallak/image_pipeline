@@ -1,0 +1,94 @@
+/*
+      ____  ____
+     /   /\/   /
+    /___/  \  /   Copyright (c) 2021, Xilinx®.
+    \   \   \/    Author: Víctor Mayoral Vilches <victorma@xilinx.com>
+     \   \
+     /   /        Licensed under the Apache License, Version 2.0 (the "License");
+    /___/   /\    you may not use this file except in compliance with the License.
+    \   \  /  \   You may obtain a copy of the License at
+     \___\/\___\            http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+*/
+
+// #include "xf_remap_config.h"
+
+#include "hls_stream.h"
+
+#include <vitis_common/common/xf_common.hpp>
+#include <vitis_common/common/xf_utility.hpp>
+#include <vitis_common/imgproc/xf_remap.hpp>
+
+#define XF_INTERPOLATION_TYPE XF_INTERPOLATION_BILINEAR  // interpolation type
+#define XF_USE_URAM false  // Enable to map some structures to UltraRAM instead of BRAM
+
+// #define PTR_IMG_WIDTH 8  // for GRAY
+// #define TYPE XF_8UC1
+// #define CHANNELS 1
+
+#define PTR_IMG_WIDTH 32  // if RGB
+#define TYPE XF_8UC3
+#define CHANNELS 3
+
+#define TYPE_XY XF_32FC1
+#define PTR_MAP_WIDTH 32
+#define NPC XF_NPPC1  // Number of pixels to be processed per cycle
+#define XF_WIN_ROWS 8  // Number of input image rows to be buffered inside
+
+#define HEIGHT 1080
+#define WIDTH 1920
+
+extern "C" {
+
+  void rectify_accel(
+      ap_uint<PTR_IMG_WIDTH>* img_in, float* map_x, float* map_y, ap_uint<PTR_IMG_WIDTH>* img_out, int rows, int cols) {
+      #pragma HLS INTERFACE m_axi      port=img_in        offset=slave  bundle=gmem0
+      #pragma HLS INTERFACE m_axi      port=map_x         offset=slave  bundle=gmem1
+      #pragma HLS INTERFACE m_axi      port=map_y         offset=slave  bundle=gmem2
+      #pragma HLS INTERFACE m_axi      port=img_out       offset=slave  bundle=gmem3
+      #pragma HLS INTERFACE s_axilite  port=rows
+      #pragma HLS INTERFACE s_axilite  port=cols
+      #pragma HLS INTERFACE s_axilite  port=return
+
+      xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgInput(rows, cols);
+      xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapX(rows, cols);
+      xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapY(rows, cols);
+      xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgOutput(rows, cols);
+
+      const int HEIGHT_WIDTH_LOOPCOUNT = HEIGHT * WIDTH / XF_NPIXPERCYCLE(NPC);
+      for (unsigned int i = 0; i < rows * cols; ++i) {
+  	#pragma HLS LOOP_TRIPCOUNT min=1 max=HEIGHT_WIDTH_LOOPCOUNT
+          #pragma HLS PIPELINE II=1
+          // clang-format on
+          float map_x_val = map_x[i];
+          float map_y_val = map_y[i];
+          mapX.write_float(i, map_x_val);
+          mapY.write_float(i, map_y_val);
+      }
+
+      #pragma HLS STREAM variable=imgInput.data depth=2
+      #pragma HLS STREAM variable=mapX.data depth=2
+      #pragma HLS STREAM variable=mapY.data depth=2
+      #pragma HLS STREAM variable=imgOutput.data depth=2
+
+      #pragma HLS DATAFLOW
+
+      // Retrieve xf::cv::Mat objects from img_in data:
+      xf::cv::Array2xfMat<PTR_IMG_WIDTH, TYPE, HEIGHT, WIDTH, NPC>(img_in, imgInput);
+
+      // Run xfOpenCV kernel:
+      xf::cv::remap<XF_WIN_ROWS, XF_INTERPOLATION_TYPE, TYPE, TYPE_XY, TYPE, HEIGHT, WIDTH, NPC, XF_USE_URAM>(
+          imgInput, imgOutput, mapX, mapY);
+
+      // Convert _dst xf::cv::Mat object to output array:
+      xf::cv::xfMat2Array<PTR_IMG_WIDTH, TYPE, HEIGHT, WIDTH, NPC>(imgOutput, img_out);
+
+      return;
+  } // End of kernel
+
+} // End of extern C
