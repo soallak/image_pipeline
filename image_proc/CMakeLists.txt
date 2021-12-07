@@ -60,39 +60,50 @@ rclcpp_components_register_nodes(resize "image_proc::ResizeNode")
 set(node_plugins "${node_plugins}image_proc::ResizeNode;$<TARGET_FILE:resize>\n")
 
 # resize_fpga component
-ament_auto_add_library(resize_fpga SHARED
-  src/resize_fpga.cpp
-)
+ament_auto_add_library(resize_fpga SHARED src/resize_fpga.cpp)
 target_include_directories(resize_fpga PUBLIC
   # $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/vitis_common>
   $ENV{XILINX_HLS}/common/technology/autopilot
-  $ENV{XILINX_HLS}/include
-)
-target_link_libraries(resize_fpga
-  ${OpenCL_LIBRARY}
-)
-target_compile_definitions(resize_fpga
-  PRIVATE "COMPOSITION_BUILDING_DLL"
-)
+  $ENV{XILINX_HLS}/include)
+target_link_libraries(resize_fpga ${OpenCL_LIBRARY})
+target_compile_definitions(resize_fpga PRIVATE "COMPOSITION_BUILDING_DLL")
 rclcpp_components_register_nodes(resize_fpga "image_proc::ResizeNodeFPGA")
 set(node_plugins "${node_plugins}image_proc::ResizeNodeFPGA;$<TARGET_FILE:resize_fpga>\n")
 
-if(ACCELERATION)
-  # vadd kernel
+# rectify_fpga component
+ament_auto_add_library(rectify_fpga SHARED src/rectify_fpga.cpp)
+target_include_directories(rectify_fpga PUBLIC
+  # $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/vitis_common>
+  $ENV{XILINX_HLS}/common/technology/autopilot
+  $ENV{XILINX_HLS}/include)
+target_link_libraries(rectify_fpga ${OpenCL_LIBRARY})
+target_compile_definitions(rectify_fpga PRIVATE "COMPOSITION_BUILDING_DLL")
+rclcpp_components_register_nodes(rectify_fpga "image_proc::RectifyNodeFPGA")
+set(node_plugins "${node_plugins}image_proc::RectifyNodeFPGA;$<TARGET_FILE:rectify_fpga>\n")
+
+if(ROS_ACCELERATION)
+  # # resize_accel kernel
+  # vitis_acceleration_kernel(
+  #   NAME resize_accel
+  #   FILE src/image_proc/xf_resize_accel.cpp
+  #   CONFIG src/kv260.cfg
+  #   # CONFIG src/zcu102.cfg
+  #   INCLUDE
+  #     include/image_proc
+  #     ${CMAKE_INSTALL_PREFIX}/include
+  #   TYPE hw
+  #   PACKAGE)
+
+  # rectify_accel kernel
   vitis_acceleration_kernel(
-    NAME resize_accel
-    FILE src/image_proc/xf_resize_accel.cpp
+    NAME rectify_accel
+    FILE src/image_proc/xf_rectify_accel.cpp
     CONFIG src/kv260.cfg
-    # CONFIG src/zcu102.cfg
     INCLUDE
       include/image_proc
       ${CMAKE_INSTALL_PREFIX}/include
-    TYPE
-      # sw_emu
-      # hw_emu
-      hw
-    PACKAGE
-  )
+    TYPE hw
+    PACKAGE)
 endif()
 
 # crop_decimate library
@@ -126,11 +137,24 @@ target_link_libraries(image_proc_exe
 )
 set_target_properties(image_proc_exe PROPERTIES OUTPUT_NAME image_proc)
 
+# TODO: removeme
+# rectify_node
+add_executable(rectify_node src/rectify_node.cpp)
+target_link_libraries(rectify_node rectify_fpga)
+ament_target_dependencies(rectify_node rclcpp class_loader)
+
+install(TARGETS
+  rectify_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   target_link_libraries(image_proc "stdc++fs")
 endif()
 
-install(TARGETS image_proc_exe
+install(
+  TARGETS
+    image_proc_exe
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
