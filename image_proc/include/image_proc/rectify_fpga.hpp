@@ -34,6 +34,42 @@
 
 #include <vitis_common/common/ros_opencl_120.hpp>
 
+
+namespace image_geometry
+{
+
+class PinholeCameraModelFPGA: public image_geometry::PinholeCameraModel
+{
+public:
+
+  /* \brief Constructor
+   */
+  PinholeCameraModelFPGA();
+
+  /**
+   * \brief Rectify a raw camera image offloading the remapping to the FPGA.
+   *
+   *  TODO: Consider pushing OpenCV cv::initRectificationMaps also to the FPGA
+   *  by using Vitis Vision Library xf::cv::InitUndistortRectifyMapInverse
+   */
+  void rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray,
+                        int interpolation = cv::INTER_LINEAR) const;
+
+  /**
+   * \brief Auxiliary method to debug rectification across CPU and FPGA
+   */
+  void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray,
+                        int interpolation = cv::INTER_LINEAR) const;
+
+private:
+  cl::Kernel* krnl_;
+  cl::Context* context_;
+  cl::CommandQueue* queue_;
+
+};
+
+} //namespace image_geometry
+
 namespace image_proc
 {
 
@@ -52,11 +88,7 @@ private:
   image_transport::Publisher pub_rect_;
 
   // Processing state (note: only safe because we're using single-threaded NodeHandle!)
-  image_geometry::PinholeCameraModel model_;
-
-  cl::Kernel* krnl_;
-  cl::Context* context_;
-  cl::CommandQueue* queue_;
+  image_geometry::PinholeCameraModelFPGA model_;
 
   void subscribeToCamera();
   void imageCb(

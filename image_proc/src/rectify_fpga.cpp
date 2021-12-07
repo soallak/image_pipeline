@@ -16,11 +16,12 @@
     limitations under the License.
 
     Inspired by rectify.cpp authored by Willow Garage, Inc., Andreas Klintberg,
-      Joshua Whitley
+      Joshua Whitley. Inspired also by PinholeCameraModel class.
 */
 
 #include <rclcpp/rclcpp.hpp>
 #include <cv_bridge/cv_bridge.h>
+#include <image_geometry/pinhole_camera_model.h>
 #include <image_geometry/pinhole_camera_model.h>
 #include <image_transport/image_transport.hpp>
 #include <vitis_common/common/xf_headers.hpp>
@@ -29,8 +30,300 @@
 #include <thread>
 #include <memory>
 #include <vector>
+#include <chrono>
 
 #include "image_proc/rectify_fpga.hpp"
+
+namespace image_geometry
+{
+
+// From pinhole_camera_model.cpp
+enum DistortionState { NONE, CALIBRATED, UNKNOWN };
+
+struct PinholeCameraModelFPGA::Cache
+{
+  DistortionState distortion_state;
+
+  cv::Mat_<double> K_binned, P_binned; // Binning applied, but not cropping
+
+  mutable bool full_maps_dirty;
+  mutable cv::Mat full_map1, full_map2;
+
+  mutable bool reduced_maps_dirty;
+  mutable cv::Mat reduced_map1, reduced_map2;
+
+  mutable bool rectified_roi_dirty;
+  mutable cv::Rect rectified_roi;
+
+  Cache()
+    : full_maps_dirty(true),
+      reduced_maps_dirty(true),
+      rectified_roi_dirty(true)
+  {
+  }
+};
+
+PinholeCameraModelFPGA::PinholeCameraModelFPGA()
+{
+  // Load the acceleration kernel
+  // NOTE: hardcoded path according to dfx-mgrd conventions
+  // TODO: generalize this in the future
+  cl_int err;
+  unsigned fileBufSize;
+
+  std::vector<cl::Device> devices = get_xilinx_devices();  // Get the device:
+  cl::Device device = devices[0];
+  OCL_CHECK(err, context_ = new cl::Context(device, NULL, NULL, NULL, &err));
+  OCL_CHECK(err, queue_ = new cl::CommandQueue(*context_, device, CL_QUEUE_PROFILING_ENABLE, &err));
+  OCL_CHECK(err, std::string device_name = device.getInfo<CL_DEVICE_NAME>(&err));
+  std::cout << "INFO: Device found - " << device_name << std::endl;
+  // TODO: Reconsider this file hardcoded in here
+  char* fileBuf = read_binary_file("/lib/firmware/xilinx/image_proc/rectify_accel.xclbin", fileBufSize);
+  cl::Program::Binaries bins{{fileBuf, fileBufSize}};
+  devices.resize(1);
+  OCL_CHECK(err, cl::Program program(*context_, devices, bins, NULL, &err));
+  OCL_CHECK(err, krnl_ = new cl::Kernel(program, "rectify_accel", &err));
+}
+
+void PinholeCameraModelFPGA::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray, int interpolation) const
+{
+  assert( initialized() );
+
+  switch (cache_->distortion_state) {
+    case NONE:
+      raw.copyTo(rectified);
+      break;
+    case CALIBRATED:
+      {
+        initRectificationMaps();
+
+        //  REVIEW: Vitis Vision Library reviewed does not seem to offer
+        //  capabilities to differentiate between CV_32F and CV_64F. It'd be nice
+        //  to consult with the appropriate team specialized on this.
+        //
+        //
+        // // CPU implementation
+        // if (raw.depth() == CV_32F || raw.depth() == CV_64F)
+        // {
+        //   cv::remap(raw, rectified, cache_->reduced_map1, cache_->reduced_map2, interpolation, cv::BORDER_CONSTANT, std::numeric_limits<float>::quiet_NaN());
+        // }
+        // else {
+        //   cv::remap(raw, rectified, cache_->reduced_map1, cache_->reduced_map2, interpolation);
+        // }
+
+        // FPGA implementation
+        int channels = gray ? 1 : 3;
+        size_t image_in_size_bytes = raw.rows * raw.cols * sizeof(unsigned char) * channels;
+        size_t map_in_size_bytes = raw.rows * raw.cols * sizeof(float);
+        size_t image_out_size_bytes = image_in_size_bytes;
+        cl_int err;
+
+        // Allocate the buffers:
+        OCL_CHECK(err, cl::Buffer buffer_inImage(*context_, CL_MEM_READ_ONLY, image_in_size_bytes, NULL, &err));
+        OCL_CHECK(err, cl::Buffer buffer_inMapX(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
+        OCL_CHECK(err, cl::Buffer buffer_inMapY(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
+        OCL_CHECK(err, cl::Buffer buffer_outImage(*context_, CL_MEM_WRITE_ONLY, image_out_size_bytes, NULL, &err));
+
+        // Set kernel arguments:
+        int rows = raw.rows;
+        int cols = raw.cols;
+        OCL_CHECK(err, err = krnl_->setArg(0, buffer_inImage));
+        OCL_CHECK(err, err = krnl_->setArg(1, buffer_inMapX));
+        OCL_CHECK(err, err = krnl_->setArg(2, buffer_inMapY));
+        OCL_CHECK(err, err = krnl_->setArg(3, buffer_outImage));
+        OCL_CHECK(err, err = krnl_->setArg(4, rows));
+        OCL_CHECK(err, err = krnl_->setArg(5, cols));
+
+        // Initialize the buffers:
+        cl::Event event;
+
+        OCL_CHECK(err,
+                  queue_->enqueueWriteBuffer(buffer_inImage,    // buffer on the FPGA
+                                           CL_TRUE,             // blocking call
+                                           0,                   // buffer offset in bytes
+                                           image_in_size_bytes, // Size in bytes
+                                           raw.data,            // Pointer to the data to copy
+                                           nullptr, &event));
+
+        OCL_CHECK(err,
+                  queue_->enqueueWriteBuffer(buffer_inMapX,   // buffer on the FPGA
+                                           CL_TRUE,           // blocking call
+                                           0,                 // buffer offset in bytes
+                                           map_in_size_bytes, // Size in bytes
+                                           cache_->reduced_map1.data, // Pointer to the data to copy
+                                           nullptr, &event));
+
+        OCL_CHECK(err,
+                  queue_->enqueueWriteBuffer(buffer_inMapY,   // buffer on the FPGA
+                                           CL_TRUE,           // blocking call
+                                           0,                 // buffer offset in bytes
+                                           map_in_size_bytes, // Size in bytes
+                                           cache_->reduced_map2.data, // Pointer to the data to copy
+                                           nullptr, &event));
+
+        // Execute the kernel:
+        OCL_CHECK(err, err = queue_->enqueueTask(*krnl_));
+
+        // Copy Result from Device Global Memory to Host Local Memory
+        queue_->enqueueReadBuffer(buffer_outImage,    // This buffers data will be read
+                                CL_TRUE,              // blocking call
+                                0,                    // offset
+                                image_out_size_bytes,
+                                rectified.data,    // Data will be stored here
+                                nullptr, &event);
+
+        // Clean up:
+        queue_->finish();
+
+        break;
+      }
+    default:
+      assert(cache_->distortion_state == UNKNOWN);
+      throw Exception("Cannot call rectifyImage when distortion is unknown.");
+  }
+}
+
+void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray, int interpolation) const
+{
+  assert( initialized() );
+
+  cv::Mat ocv_remapped, hls_remapped, diff;
+  ocv_remapped.create(raw.rows, raw.cols, raw.type()); // opencv result
+  hls_remapped.create(raw.rows, raw.cols, raw.type()); // create memory for output images
+  diff.create(raw.rows, raw.cols, raw.type());
+
+  initRectificationMaps();
+
+  // Flip the image
+  // TODO, removeme ///////////////
+  cv::Mat map_x, map_y;
+  // Allocate memory
+  map_x.create(raw.rows, raw.cols, CV_32FC1);          // Mapx for opencv remap function
+  map_y.create(raw.rows, raw.cols, CV_32FC1);          // Mapy for opencv remap function
+
+  for (int i = 0; i < raw.rows; i++) {
+         for (int j = 0; j < raw.cols; j++) {
+             float valx = (float)(raw.cols - j - 1), valy = (float)i;
+             map_x.at<float>(i, j) = valx;
+             map_y.at<float>(i, j) = valy;
+         }
+  }
+  // TODO, removeme///////////////
+
+
+
+  //  REVIEW: Vitis Vision Library reviewed does not seem to offer
+  //  capabilities to differentiate between CV_32F and CV_64F. It'd be nice
+  //  to consult with the appropriate team specialized on this.
+  //
+  //
+  // CPU implementation
+  auto start_cpu = std::chrono::high_resolution_clock::now();
+  if (raw.depth() == CV_32F || raw.depth() == CV_64F)
+  {
+    std::cout << "raw.depth() == CV_32F || CV_64F\n";
+    // cv::remap(raw, ocv_remapped, cache_->reduced_map1, cache_->reduced_map2, interpolation, cv::BORDER_CONSTANT, std::numeric_limits<float>::quiet_NaN());
+    cv::remap(raw, ocv_remapped, map_x, map_y, interpolation, cv::BORDER_CONSTANT, std::numeric_limits<float>::quiet_NaN());
+  }
+  else {
+    // cv::remap(raw, ocv_remapped, cache_->reduced_map1, cache_->reduced_map2, interpolation);
+    cv::remap(raw, ocv_remapped, map_x, map_y, interpolation);
+  }
+  auto finish_cpu = std::chrono::high_resolution_clock::now();
+
+  // FPGA implementation
+  auto start_fpga = std::chrono::high_resolution_clock::now();
+  int channels = gray ? 1 : 3;
+  size_t image_in_size_bytes = raw.rows * raw.cols * sizeof(unsigned char) * channels;
+  size_t map_in_size_bytes = raw.rows * raw.cols * sizeof(float);
+  size_t image_out_size_bytes = image_in_size_bytes;
+  cl_int err;
+
+  // Allocate the buffers:
+  OCL_CHECK(err, cl::Buffer buffer_inImage(*context_, CL_MEM_READ_ONLY, image_in_size_bytes, NULL, &err));
+  OCL_CHECK(err, cl::Buffer buffer_inMapX(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
+  OCL_CHECK(err, cl::Buffer buffer_inMapY(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
+  OCL_CHECK(err, cl::Buffer buffer_outImage(*context_, CL_MEM_WRITE_ONLY, image_out_size_bytes, NULL, &err));
+
+  // Set kernel arguments:
+  int rows = raw.rows;
+  int cols = raw.cols;
+  OCL_CHECK(err, err = krnl_->setArg(0, buffer_inImage));
+  OCL_CHECK(err, err = krnl_->setArg(1, buffer_inMapX));
+  OCL_CHECK(err, err = krnl_->setArg(2, buffer_inMapY));
+  OCL_CHECK(err, err = krnl_->setArg(3, buffer_outImage));
+  OCL_CHECK(err, err = krnl_->setArg(4, rows));
+  OCL_CHECK(err, err = krnl_->setArg(5, cols));
+
+  // Initialize the buffers:
+  cl::Event event;
+
+  OCL_CHECK(err,
+            queue_->enqueueWriteBuffer(buffer_inImage,    // buffer on the FPGA
+                                     CL_TRUE,             // blocking call
+                                     0,                   // buffer offset in bytes
+                                     image_in_size_bytes, // Size in bytes
+                                     raw.data,            // Pointer to the data to copy
+                                     nullptr, &event));
+
+  OCL_CHECK(err,
+            queue_->enqueueWriteBuffer(buffer_inMapX,   // buffer on the FPGA
+                                     CL_TRUE,           // blocking call
+                                     0,                 // buffer offset in bytes
+                                     map_in_size_bytes, // Size in bytes
+                                     // cache_->reduced_map1.data, // Pointer to the data to copy
+                                     map_x.data, // Pointer to the data to copy
+                                     nullptr, &event));
+
+  OCL_CHECK(err,
+            queue_->enqueueWriteBuffer(buffer_inMapY,   // buffer on the FPGA
+                                     CL_TRUE,           // blocking call
+                                     0,                 // buffer offset in bytes
+                                     map_in_size_bytes, // Size in bytes
+                                     // cache_->reduced_map2.data, // Pointer to the data to copy
+                                     map_y.data, // Pointer to the data to copy
+                                     nullptr, &event));
+
+  // Execute the kernel:
+  OCL_CHECK(err, err = queue_->enqueueTask(*krnl_));
+
+  // Copy Result from Device Global Memory to Host Local Memory
+  queue_->enqueueReadBuffer(buffer_outImage,    // This buffers data will be read
+                          CL_TRUE,              // blocking call
+                          0,                    // offset
+                          image_out_size_bytes,
+                          hls_remapped.data,    // Data will be stored here
+                          nullptr, &event);
+
+  // Clean up:
+  queue_->finish();
+  auto finish_fpga = std::chrono::high_resolution_clock::now();
+
+  // Assign rectified to either output of CPU or FPGA
+  rectified = ocv_remapped;  // CPU
+  // rectified = hls_remapped;  // FPGA
+
+  // Time evaluation
+  std::chrono::duration<double> elapsed_cpu = finish_cpu - start_cpu;
+  std::chrono::duration<double> elapsed_fpga = finish_fpga - start_fpga;
+  std::cout << "Elapsed time CPU: " << elapsed_cpu.count() << " s\n";
+  std::cout << "Elapsed time FPGA: " << elapsed_fpga.count() << " s\n";
+  std::cout << "CPU/FPGA: " << elapsed_cpu.count()/elapsed_fpga.count() << "\n";
+
+  // Results verification:
+  cv::absdiff(ocv_remapped, hls_remapped, diff);
+  float err_per;
+  xf::cv::analyzeDiff(diff, 0, err_per);
+
+  if (err_per > 0.0f) {
+      std::cout << "ERROR: Test Failed.\n";
+      return;
+  } else {
+    std::cout << "Test successful.\n";
+  }
+}
+
+} //namespace image_geometry
 
 namespace image_proc
 {
@@ -42,24 +335,6 @@ RectifyNodeFPGA::RectifyNodeFPGA(const rclcpp::NodeOptions & options)
   interpolation = this->declare_parameter("interpolation", 1);
   pub_rect_ = image_transport::create_publisher(this, "image_rect");
   subscribeToCamera();
-
-  // Load the acceleration kernel
-  // NOTE: hardcoded path according to dfx-mgrd conventions
-  // TODO: generalize this
-  cl_int err;
-  unsigned fileBufSize;
-
-  std::vector<cl::Device> devices = get_xilinx_devices();  // Get the device:
-  cl::Device device = devices[0];
-  OCL_CHECK(err, context_ = new cl::Context(device, NULL, NULL, NULL, &err));
-  OCL_CHECK(err, queue_ = new cl::CommandQueue(*context_, device, CL_QUEUE_PROFILING_ENABLE, &err));
-  OCL_CHECK(err, std::string device_name = device.getInfo<CL_DEVICE_NAME>(&err));
-  std::cout << "INFO: Device found - " << device_name << std::endl;
-  char* fileBuf = read_binary_file("/lib/firmware/xilinx/image_proc/rectify_accel.xclbin", fileBufSize);
-  cl::Program::Binaries bins{{fileBuf, fileBufSize}};
-  devices.resize(1);
-  OCL_CHECK(err, cl::Program program(*context_, devices, bins, NULL, &err));
-  OCL_CHECK(err, krnl_ = new cl::Kernel(program, "rectify_accel", &err));
 }
 
 // Handles (un)subscribing when clients (un)subscribe
@@ -86,9 +361,6 @@ void RectifyNodeFPGA::imageCb(
   const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
-  RCLCPP_INFO(this->get_logger(), "RectifyNodeFPGA::imageCb.");
-  RCLCPP_INFO(this->get_logger(), "RectifyNodeFPGA::imageCb 2.");
-
 
   // if (pub_rect_.getNumSubscribers() < 1) {
   //   return;
@@ -121,142 +393,21 @@ void RectifyNodeFPGA::imageCb(
   bool gray =
     (sensor_msgs::image_encodings::numChannels(image_msg->encoding) == 1);
 
-  // // TODO: removethis if not needed
-  // // Update the camera model
-  // model_.fromCameraInfo(info_msg);
+  // Update the camera model
+  model_.fromCameraInfo(info_msg);
 
   // Create cv::Mat views onto both buffers
-  const cv::Mat src = cv_bridge::toCvShare(image_msg)->image;
+  const cv::Mat image = cv_bridge::toCvShare(image_msg)->image;
   cv::Mat rect;
-  cv::Mat ocv_remapped, hls_remapped, diff;
 
-  // Allocate memory for the outputs:
-  // TODO, do this in the initialization
-  std::cout << "INFO: Allocate memory for input and output data." << std::endl;
-  ocv_remapped.create(src.rows, src.cols, src.type()); // opencv result
-  hls_remapped.create(src.rows, src.cols, src.type()); // create memory for output images
-  diff.create(src.rows, src.cols, src.type());
-
-  // Flip the image
-  // TODO, removeme ///////////////
-  cv::Mat map_x, map_y;
-  // Allocate memory
-  map_x.create(src.rows, src.cols, CV_32FC1);          // Mapx for opencv remap function
-  map_y.create(src.rows, src.cols, CV_32FC1);          // Mapy for opencv remap function
-
-  for (int i = 0; i < src.rows; i++) {
-         for (int j = 0; j < src.cols; j++) {
-             float valx = (float)(src.cols - j - 1), valy = (float)i;
-             map_x.at<float>(i, j) = valx;
-             map_y.at<float>(i, j) = valy;
-         }
-  }
-  // TODO, removeme///////////////
-
-  ////////////////////////////////
-  // CPU
-
-  // initRectificationMaps and remap
-  // model_.rectifyImage(image, rect, interpolation);
-
-  // remap
-  // example map generation, flips the image horizontally
-  // cv::remap(src, ocv_remapped, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  cv::remap(src, ocv_remapped, map_x, map_y, interpolation);
-  ////////////////////////////////
-
-
-  ////////////////////////////////
-  // FPGA
-
-  // initRectificationMaps
-  // TODO
-
-
-  // remap
-  // OpenCL section:
-  int channels = gray ? 1 : 3;
-  size_t image_in_size_bytes = src.rows * src.cols * sizeof(unsigned char) * channels;
-  size_t map_in_size_bytes = src.rows * src.cols * sizeof(float);
-  size_t image_out_size_bytes = image_in_size_bytes;
-
-  cl_int err;
-
-  // Allocate the buffers:
-  OCL_CHECK(err, cl::Buffer buffer_inImage(*context_, CL_MEM_READ_ONLY, image_in_size_bytes, NULL, &err));
-  OCL_CHECK(err, cl::Buffer buffer_inMapX(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
-  OCL_CHECK(err, cl::Buffer buffer_inMapY(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
-  OCL_CHECK(err, cl::Buffer buffer_outImage(*context_, CL_MEM_WRITE_ONLY, image_out_size_bytes, NULL, &err));
-
-  // Set kernel arguments:
-  int rows = src.rows;
-  int cols = src.cols;
-  OCL_CHECK(err, err = krnl_->setArg(0, buffer_inImage));
-  OCL_CHECK(err, err = krnl_->setArg(1, buffer_inMapX));
-  OCL_CHECK(err, err = krnl_->setArg(2, buffer_inMapY));
-  OCL_CHECK(err, err = krnl_->setArg(3, buffer_outImage));
-  OCL_CHECK(err, err = krnl_->setArg(4, rows));
-  OCL_CHECK(err, err = krnl_->setArg(5, cols));
-
-  // Initialize the buffers:
-  cl::Event event;
-
-  OCL_CHECK(err,
-            queue_->enqueueWriteBuffer(buffer_inImage,      // buffer on the FPGA
-                                     CL_TRUE,             // blocking call
-                                     0,                   // buffer offset in bytes
-                                     image_in_size_bytes, // Size in bytes
-                                     src.data,            // Pointer to the data to copy
-                                     nullptr, &event));
-
-  OCL_CHECK(err,
-            queue_->enqueueWriteBuffer(buffer_inMapX,     // buffer on the FPGA
-                                     CL_TRUE,           // blocking call
-                                     0,                 // buffer offset in bytes
-                                     map_in_size_bytes, // Size in bytes
-                                     map_x.data,        // Pointer to the data to copy
-                                     nullptr, &event));
-
-  OCL_CHECK(err,
-            queue_->enqueueWriteBuffer(buffer_inMapY,     // buffer on the FPGA
-                                     CL_TRUE,           // blocking call
-                                     0,                 // buffer offset in bytes
-                                     map_in_size_bytes, // Size in bytes
-                                     map_y.data,        // Pointer to the data to copy
-                                     nullptr, &event));
-
-  // Execute the kernel:
-  OCL_CHECK(err, err = queue_->enqueueTask(*krnl_));
-
-  // Copy Result from Device Global Memory to Host Local Memory
-  queue_->enqueueReadBuffer(buffer_outImage, // This buffers data will be read
-                          CL_TRUE,         // blocking call
-                          0,               // offset
-                          image_out_size_bytes,
-                          hls_remapped.data, // Data will be stored here
-                          nullptr, &event);
-
-  // Clean up:
-  queue_->finish();
-  ////////////////////////////////
-
-  // Results verification:
-  cv::absdiff(ocv_remapped, hls_remapped, diff);
-  // Find minimum and maximum differences.
-  float err_per;
-  xf::cv::analyzeDiff(diff, 0, err_per);
-
-  if (err_per > 0.0f) {
-      fprintf(stderr, "ERROR: Test Failed.\n ");
-      RCLCPP_ERROR(this->get_logger(), "Test failed.");
-      return;
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Test successful.");
-  }
+  // Rectify
+  // model_.rectifyImage(image, rect, interpolation);  // CPU computation
+  // model_.rectifyImageFPGA(image, rect, gray, interpolation);  // FPGA computation
+  model_.rectifyImageFPGA_debug(image, rect, gray, interpolation);  // CPU and FPGA debug computation
 
   // Allocate new rectified image message
   sensor_msgs::msg::Image::SharedPtr rect_msg =
-    cv_bridge::CvImage(image_msg->header, image_msg->encoding, hls_remapped).toImageMsg();
+    cv_bridge::CvImage(image_msg->header, image_msg->encoding, rect).toImageMsg();
   pub_rect_.publish(rect_msg);
 }
 
