@@ -20,7 +20,6 @@
 #include "hls_stream.h"
 #include "ap_int.h"
 #include <vitis_common/common/xf_common.hpp>
-// #include "xf_config_params.h"
 #include <vitis_common/imgproc/xf_resize.hpp>
 
 /* Interface types */

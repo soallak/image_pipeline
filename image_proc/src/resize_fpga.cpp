@@ -18,22 +18,22 @@
     Inspired by resize.cpp authored by Kentaro Wada, Joshua Whitley
 */
 
-
 #include <memory>
 #include <mutex>
 #include <vector>
 #include <chrono>
 
-#include "image_proc/resize_fpga.hpp"
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/qos.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.hpp>
-#include <rclcpp/qos.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
-
 #include <vitis_common/common/xf_headers.hpp>
+
 #include "image_proc/xf_resize_config.h"
+#include "image_proc/resize_fpga.hpp"
+
 
 
 // Forward declaration of utility functions included at the end of this file
@@ -83,6 +83,7 @@ ResizeNodeFPGA::ResizeNodeFPGA(const rclcpp::NodeOptions & options)
 
   // Load binary:
   // NOTE: hardcoded path according to dfx-mgrd conventions
+  // TODO: generalize this
   char* fileBuf = read_binary_file(
         "/lib/firmware/xilinx/image_proc/resize_accel.xclbin",
         fileBufSize);
