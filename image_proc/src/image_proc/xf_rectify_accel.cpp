@@ -50,26 +50,13 @@ extern "C" {
 
   void rectify_accel(
       ap_uint<PTR_IMG_WIDTH>* img_in, float* map_x, float* map_y, ap_uint<PTR_IMG_WIDTH>* img_out, int rows, int cols) {
-        // float* K_binned
       #pragma HLS INTERFACE m_axi      port=img_in        offset=slave  bundle=gmem0
       #pragma HLS INTERFACE m_axi      port=map_x         offset=slave  bundle=gmem1
       #pragma HLS INTERFACE m_axi      port=map_y         offset=slave  bundle=gmem2
       #pragma HLS INTERFACE m_axi      port=img_out       offset=slave  bundle=gmem3
-      // #pragma HLS INTERFACE m_axi      port=K_binned      offset=slave  bundle=gmem4
       #pragma HLS INTERFACE s_axilite  port=rows
       #pragma HLS INTERFACE s_axilite  port=cols
       #pragma HLS INTERFACE s_axilite  port=return
-
-
-      // // Get arguments for the mapping operation (InitUndistortRectifyMapInverse)
-      // ap_fixed<32, 12> K_binned_fix[XF_CAMERA_MATRIX_SIZE];
-      // for (int i = 0; i < XF_CAMERA_MATRIX_SIZE; i++) {
-      // // clang-format off
-      //     #pragma HLS PIPELINE II=1
-      //     // clang-format on
-      //     K_binned_fix[i] = (ap_fixed<32, 12>)K_binned[i];
-      //     // irA_l_fix[i] = (ap_fixed<32, 12>)irA_l[i];
-      // }
 
       // Get arguments for remap operation (remap)
       xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgInput(rows, cols);
