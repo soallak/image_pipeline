@@ -137,17 +137,6 @@ target_link_libraries(image_proc_exe
 )
 set_target_properties(image_proc_exe PROPERTIES OUTPUT_NAME image_proc)
 
-# TODO: removeme
-# rectify_node
-add_executable(rectify_node src/rectify_node.cpp)
-target_link_libraries(rectify_node rectify_fpga)
-ament_target_dependencies(rectify_node rclcpp class_loader)
-
-install(TARGETS
-  rectify_node
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   target_link_libraries(image_proc "stdc++fs")
 endif()
