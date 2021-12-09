@@ -379,33 +379,33 @@ void RectifyNodeFPGA::imageCb(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
 
-  // if (pub_rect_.getNumSubscribers() < 1) {
-  //   return;
-  // }
-  //
-  // // Verify camera is actually calibrated
-  // if (info_msg->k[0] == 0.0) {
-  //   RCLCPP_ERROR(
-  //     this->get_logger(), "Rectified topic '%s' requested but camera publishing '%s' "
-  //     "is uncalibrated", pub_rect_.getTopic().c_str(), sub_camera_.getInfoTopic().c_str());
-  //   return;
-  // }
-  //
-  // // If zero distortion, just pass the message along
-  // bool zero_distortion = true;
-  //
-  // for (size_t i = 0; i < info_msg->d.size(); ++i) {
-  //   if (info_msg->d[i] != 0.0) {
-  //     zero_distortion = false;
-  //     break;
-  //   }
-  // }
-  //
-  // // This will be true if D is empty/zero sized
-  // if (zero_distortion) {
-  //   pub_rect_.publish(image_msg);
-  //   return;
-  // }
+  if (pub_rect_.getNumSubscribers() < 1) {
+    return;
+  }
+
+  // Verify camera is actually calibrated
+  if (info_msg->k[0] == 0.0) {
+    RCLCPP_ERROR(
+      this->get_logger(), "Rectified topic '%s' requested but camera publishing '%s' "
+      "is uncalibrated", pub_rect_.getTopic().c_str(), sub_camera_.getInfoTopic().c_str());
+    return;
+  }
+
+  // If zero distortion, just pass the message along
+  bool zero_distortion = true;
+
+  for (size_t i = 0; i < info_msg->d.size(); ++i) {
+    if (info_msg->d[i] != 0.0) {
+      zero_distortion = false;
+      break;
+    }
+  }
+
+  // This will be true if D is empty/zero sized
+  if (zero_distortion) {
+    pub_rect_.publish(image_msg);
+    return;
+  }
 
   bool gray =
     (sensor_msgs::image_encodings::numChannels(image_msg->encoding) == 1);
