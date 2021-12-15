@@ -104,11 +104,7 @@ void PinholeCameraModelFPGA::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& recti
         hls_remapped.create(raw.rows, raw.cols, raw.type()); // create memory for output images
         // if (cache_->reduced_map1.channels() == 2) {
         if (cache_->reduced_map1.type() == CV_32FC2 || cache_->reduced_map1.type() == CV_16SC2) {
-          cv::split(cache_->reduced_map1, channels_map);
-          map_x = channels_map[0];
-          map_y = channels_map[1];
-          map_x.convertTo(map_x, CV_32FC1);
-          map_y.convertTo(map_y, CV_32FC1);
+          cv::convertMaps(cache_->reduced_map1, cache_->reduced_map2, map_x, map_y, CV_32FC1);
         } else if(cache_->reduced_map1.channels() == 1 && cache_->reduced_map2.channels() == 1) {
           map_x = cache_->reduced_map1;
           map_y = cache_->reduced_map2;
@@ -207,13 +203,8 @@ void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat&
   // understand the rationale https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html#gab75ef31ce5cdfb5c44b6da5f3b908ea4)
   cv::Mat map_x, map_y;
   std::vector<cv::Mat> channels_map;
-  // if (cache_->reduced_map1.channels() == 2) {
   if (cache_->reduced_map1.type() == CV_32FC2 || cache_->reduced_map1.type() == CV_16SC2) {
-    cv::split(cache_->reduced_map1, channels_map);
-    map_x = channels_map[0];
-    map_y = channels_map[1];
-    map_x.convertTo(map_x, CV_32FC1);
-    map_y.convertTo(map_y, CV_32FC1);
+    cv::convertMaps(cache_->reduced_map1, cache_->reduced_map2, map_x, map_y, CV_32FC1);
   } else if(cache_->reduced_map1.channels() == 1 && cache_->reduced_map2.channels() == 1) {
     map_x = cache_->reduced_map1;
     map_y = cache_->reduced_map2;
@@ -221,13 +212,24 @@ void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat&
     throw Exception("Unexpected amount of channels in warp maps: " + cache_->reduced_map1.channels());
   }
 
-  // // Debug
-  // std::cout << "cache_->reduced_map1.row(0): " << cache_->reduced_map1.row(0) << std::endl;
-  // std::cout << "cache_->reduced_map2.row(0): " << cache_->reduced_map2.row(0) << std::endl;
-  // std::cout << "map_x.row(0): " << map_x.row(0) << std::endl;
-  // std::cout << "map_y.row(0): " << map_y.row(0) << std::endl;
-  // std::cout << "map_x.type(): " << map_x.type() << std::endl;
-  // std::cout << "map_y.type(): " << map_y.type() << std::endl;
+  // Debug
+  std::cout << "cache_->reduced_map1.row(0): " << cache_->reduced_map1.row(0) << std::endl;
+  std::cout << "cache_->reduced_map2.row(0): " << cache_->reduced_map2.row(0) << std::endl;
+  std::cout << "map_x.row(0): " << map_x.row(0) << std::endl;
+  std::cout << "map_y.row(0): " << map_y.row(0) << std::endl;
+
+  //  CV_16SC2 - 11
+  //  CV_32FC1 - 5
+  //  CV_32FC2 - 13
+  //  CV_16UC1 - 2
+  std::cout << "CV_32FC2: " << CV_32FC2 << std::endl;
+  std::cout << "CV_16SC2: " << CV_16SC2 << std::endl;
+  std::cout << "CV_32FC1: " << CV_32FC1 << std::endl;
+  std::cout << "CV_16UC1: " << CV_16UC1 << std::endl;
+  std::cout << "cache_->reduced_map1.type(): " << cache_->reduced_map1.type() << std::endl;
+  std::cout << "cache_->reduced_map2.type(): " << cache_->reduced_map2.type() << std::endl;
+  std::cout << "map_x.type(): " << map_x.type() << std::endl;
+  std::cout << "map_y.type(): " << map_y.type() << std::endl;
 
   //  REVIEW: Vitis Vision Library reviewed does not seem to offer
   //  capabilities to differentiate between CV_32F and CV_64F. It'd be nice
@@ -239,11 +241,9 @@ void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat&
   if (raw.depth() == CV_32F || raw.depth() == CV_64F)
   {
     std::cout << "raw.depth() == CV_32F || CV_64F\n";
-    // cv::remap(raw, ocv_remapped, cache_->reduced_map1, cache_->reduced_map2, interpolation, cv::BORDER_CONSTANT, std::numeric_limits<float>::quiet_NaN());
     cv::remap(raw, ocv_remapped, map_x, map_y, interpolation, cv::BORDER_CONSTANT, std::numeric_limits<float>::quiet_NaN());
   }
   else {
-    // cv::remap(raw, ocv_remapped, cache_->reduced_map1, cache_->reduced_map2, interpolation);
     cv::remap(raw, ocv_remapped, map_x, map_y, interpolation);
   }
   auto finish_cpu = std::chrono::high_resolution_clock::now();
@@ -419,8 +419,8 @@ void RectifyNodeFPGA::imageCb(
 
   // Rectify
   // model_.rectifyImage(image, rect, interpolation);  // CPU computation
-  model_.rectifyImageFPGA(image, rect, gray, interpolation);  // FPGA computation
-  // model_.rectifyImageFPGA_debug(image, rect, gray, interpolation);  // CPU and FPGA debug computations
+  // model_.rectifyImageFPGA(image, rect, gray, interpolation);  // FPGA computation
+  model_.rectifyImageFPGA_debug(image, rect, gray, interpolation);  // CPU and FPGA debug computations
 
   // Allocate new rectified image message
   sensor_msgs::msg::Image::SharedPtr rect_msg =
