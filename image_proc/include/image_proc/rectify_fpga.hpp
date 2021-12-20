@@ -52,14 +52,12 @@ public:
    *  TODO: Consider pushing OpenCV cv::initRectificationMaps also to the FPGA
    *  by using Vitis Vision Library xf::cv::InitUndistortRectifyMapInverse
    */
-  void rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray,
-                        int interpolation = cv::INTER_LINEAR) const;
+  void rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
   /**
    * \brief Auxiliary method to debug rectification across CPU and FPGA
    */
-  void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray,
-                        int interpolation = cv::INTER_LINEAR) const;
+  void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
 private:
   cl::Kernel* krnl_;

@@ -85,7 +85,7 @@ PinholeCameraModelFPGA::PinholeCameraModelFPGA()
   OCL_CHECK(err, krnl_ = new cl::Kernel(program, "rectify_accel", &err));
 }
 
-void PinholeCameraModelFPGA::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray, int interpolation) const
+void PinholeCameraModelFPGA::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray) const
 {
   assert( initialized() );
 
@@ -187,7 +187,7 @@ void PinholeCameraModelFPGA::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& recti
   }
 }
 
-void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray, int interpolation) const
+void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray) const
 {
   assert( initialized() );
 
@@ -241,10 +241,10 @@ void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat&
   if (raw.depth() == CV_32F || raw.depth() == CV_64F)
   {
     std::cout << "raw.depth() == CV_32F || CV_64F\n";
-    cv::remap(raw, ocv_remapped, map_x, map_y, interpolation, cv::BORDER_CONSTANT, std::numeric_limits<float>::quiet_NaN());
+    cv::remap(raw, ocv_remapped, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, std::numeric_limits<float>::quiet_NaN());
   }
   else {
-    cv::remap(raw, ocv_remapped, map_x, map_y, interpolation);
+    cv::remap(raw, ocv_remapped, map_x, map_y, cv::INTER_LINEAR);
   }
   auto finish_cpu = std::chrono::high_resolution_clock::now();
 
@@ -419,8 +419,8 @@ void RectifyNodeFPGA::imageCb(
 
   // Rectify
   // model_.rectifyImage(image, rect, interpolation);  // CPU computation
-  // model_.rectifyImageFPGA(image, rect, gray, interpolation);  // FPGA computation
-  model_.rectifyImageFPGA_debug(image, rect, gray, interpolation);  // CPU and FPGA debug computations
+  // model_.rectifyImageFPGA(image, rect, gray);  // FPGA computation
+  model_.rectifyImageFPGA_debug(image, rect, gray);  // CPU and FPGA debug computations
 
   // Allocate new rectified image message
   sensor_msgs::msg::Image::SharedPtr rect_msg =

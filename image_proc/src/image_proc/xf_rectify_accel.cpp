@@ -40,8 +40,8 @@
 #define NPC XF_NPPC1  // Number of pixels to be processed per cycle
 #define XF_WIN_ROWS 8  // Number of input image rows to be buffered inside
 
-#define HEIGHT 1080  // 480 with default RealSense drivers
-#define WIDTH 1920  // 640 with default RealSense drivers
+#define HEIGHT 480  // 480 with default RealSense drivers
+#define WIDTH 640  // 640 with default RealSense drivers
 
 #define XF_CAMERA_MATRIX_SIZE 9
 #define XF_DIST_COEFF_SIZE 5
