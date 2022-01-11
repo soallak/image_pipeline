@@ -83,17 +83,20 @@ rclcpp_components_register_nodes(rectify_fpga "image_proc::RectifyNodeFPGA")
 set(node_plugins "${node_plugins}image_proc::RectifyNodeFPGA;$<TARGET_FILE:rectify_fpga>\n")
 
 if(ROS_ACCELERATION)
-  # # resize_accel kernel
-  # vitis_acceleration_kernel(
-  #   NAME resize_accel
-  #   FILE src/image_proc/xf_resize_accel.cpp
-  #   CONFIG src/kv260.cfg
-  #   # CONFIG src/zcu102.cfg
-  #   INCLUDE
-  #     include/image_proc
-  #     ${CMAKE_INSTALL_PREFIX}/include
-  #   TYPE hw
-  #   PACKAGE)
+  # resize_accel kernel
+  vitis_acceleration_kernel(
+    NAME resize_accel
+    FILE src/image_proc/xf_resize_accel.cpp
+    CONFIG src/kv260.cfg
+    # CONFIG src/zcu102.cfg
+    INCLUDE
+      include/image_proc
+      ${CMAKE_INSTALL_PREFIX}/include
+    TYPE hw
+    # CLOCK 100000000
+    # LINK
+    # PACKAGE
+  )
 
   # rectify_accel kernel
   vitis_acceleration_kernel(
@@ -104,7 +107,10 @@ if(ROS_ACCELERATION)
       include/image_proc
       ${CMAKE_INSTALL_PREFIX}/include
     TYPE hw
-    PACKAGE)
+    # CLOCK 100000000
+    # LINK
+    # PACKAGE
+  )
 endif()
 
 # crop_decimate library
