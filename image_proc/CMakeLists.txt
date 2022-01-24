@@ -81,20 +81,51 @@ target_compile_definitions(rectify_fpga PRIVATE "COMPOSITION_BUILDING_DLL")
 rclcpp_components_register_nodes(rectify_fpga "image_proc::RectifyNodeFPGA")
 set(node_plugins "${node_plugins}image_proc::RectifyNodeFPGA;$<TARGET_FILE:rectify_fpga>\n")
 
+# # individual kernels
+# #
+# if(ROS_ACCELERATION)
+#   # resize_accel kernel
+#   vitis_acceleration_kernel(
+#     NAME resize_accel
+#     FILE src/image_proc/xf_resize_accel.cpp
+#     CONFIG src/kv260.cfg
+#     INCLUDE
+#       include/image_proc
+#       ${CMAKE_INSTALL_PREFIX}/include
+#     TYPE hw
+#     CLOCK 100000000:resize_accel
+#     LINK
+#     # PACKAGE
+#   )
+
+#   # rectify_accel kernel
+#   vitis_acceleration_kernel(
+#     NAME rectify_accel
+#     FILE src/image_proc/xf_rectify_accel.cpp
+#     CONFIG src/kv260.cfg
+#     INCLUDE
+#       include/image_proc
+#       ${CMAKE_INSTALL_PREFIX}/include
+#     TYPE hw
+#     CLOCK 100000000:rectify_accel
+#     LINK
+#     # PACKAGE
+#   )
+# endif()
+
+# image_proc kernel
+#
 if(ROS_ACCELERATION)
   # resize_accel kernel
   vitis_acceleration_kernel(
     NAME resize_accel
     FILE src/image_proc/xf_resize_accel.cpp
     CONFIG src/kv260.cfg
-    # CONFIG src/zcu102.cfg
     INCLUDE
       include/image_proc
       ${CMAKE_INSTALL_PREFIX}/include
     TYPE hw
-    # CLOCK 100000000
-    # LINK
-    # PACKAGE
+    CLOCK 100000000:resize_accel
   )
 
   # rectify_accel kernel
@@ -106,9 +137,14 @@ if(ROS_ACCELERATION)
       include/image_proc
       ${CMAKE_INSTALL_PREFIX}/include
     TYPE hw
-    # CLOCK 100000000
-    # LINK
-    # PACKAGE
+    CLOCK 100000000:rectify_accel
+  )
+
+  # image_proc kernel
+  vitis_link_kernel(
+    OUTPUT image_proc
+    KERNELS resize_accel rectify_accel
+    CONFIG src/kv260_image_proc.cfg
   )
 endif()
 

@@ -38,7 +38,7 @@
 #define TYPE_XY XF_32FC1
 #define PTR_MAP_WIDTH 32
 #define NPC XF_NPPC1  // Number of pixels to be processed per cycle
-#define XF_WIN_ROWS 8  // Number of input image rows to be buffered inside
+#define XF_WIN_ROWS 50  // Number of input image rows to be buffered inside
 
 #define HEIGHT 480  // 480 with default RealSense drivers
 #define WIDTH 640  // 640 with default RealSense drivers
