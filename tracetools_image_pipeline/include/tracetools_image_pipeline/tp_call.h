@@ -35,7 +35,7 @@
 // image_proc resize init callback
 TRACEPOINT_EVENT(
   TRACEPOINT_PROVIDER,       // tracepoint provider name
-  image_proc_resize_init,    // tracepoint name
+  image_proc_resize_cb_init,    // tracepoint name
   TP_ARGS(
     // input arguments, see https://lttng.org/docs/v2.12/#doc-tpp-def-input-args
     const void *, resize_node_arg,
@@ -50,6 +50,38 @@ TRACEPOINT_EVENT(
   )
 )
 // image_proc resize end of callback (after publication)
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,
+  image_proc_resize_cb_fini,
+  TP_ARGS(
+    const void *, resize_node_arg,
+    const void *, resize_image_msg_arg,
+    const void *, resize_info_msg_arg),
+  TP_FIELDS(
+    ctf_integer_hex(const void *, resize_node, resize_node_arg)
+    ctf_integer_hex(const void *, resize_image_msg, resize_image_msg_arg)
+    ctf_integer_hex(const void *, resize_info_msg, resize_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc resize init operation
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,       // tracepoint provider name
+  image_proc_resize_init,    // tracepoint name
+  TP_ARGS(
+    // input arguments, see https://lttng.org/docs/v2.12/#doc-tpp-def-input-args
+    const void *, resize_node_arg,
+    const void *, resize_image_msg_arg,
+    const void *, resize_info_msg_arg),
+  TP_FIELDS(
+    // output event fields, see https://lttng.org/man/3/lttng-ust/v2.12/#doc-ctf-macros
+    ctf_integer_hex(const void *, resize_node, resize_node_arg)
+    ctf_integer_hex(const void *, resize_image_msg, resize_image_msg_arg)
+    ctf_integer_hex(const void *, resize_info_msg, resize_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc resize end of operation
 TRACEPOINT_EVENT(
   TRACEPOINT_PROVIDER,
   image_proc_resize_fini,
@@ -68,7 +100,7 @@ TRACEPOINT_EVENT(
 // image_proc rectify init callback
 TRACEPOINT_EVENT(
   TRACEPOINT_PROVIDER,       // tracepoint provider name
-  image_proc_rectify_init,    // tracepoint name
+  image_proc_rectify_cb_init,    // tracepoint name
   TP_ARGS(
     // input arguments, see https://lttng.org/docs/v2.12/#doc-tpp-def-input-args
     const void *, rectify_node_arg,
@@ -85,7 +117,70 @@ TRACEPOINT_EVENT(
 // image_proc rectify end of callback (after publication)
 TRACEPOINT_EVENT(
   TRACEPOINT_PROVIDER,
+  image_proc_rectify_cb_fini,
+  TP_ARGS(
+    const void *, rectify_node_arg,
+    const void *, rectify_image_msg_arg,
+    const void *, rectify_info_msg_arg),
+  TP_FIELDS(
+    ctf_integer_hex(const void *, rectify_node, rectify_node_arg)
+    ctf_integer_hex(const void *, rectify_image_msg, rectify_image_msg_arg)
+    ctf_integer_hex(const void *, rectify_info_msg, rectify_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc rectify init
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,
+  image_proc_rectify_init,
+  TP_ARGS(
+    const void *, rectify_node_arg,
+    const void *, rectify_image_msg_arg,
+    const void *, rectify_info_msg_arg),
+  TP_FIELDS(
+    ctf_integer_hex(const void *, rectify_node, rectify_node_arg)
+    ctf_integer_hex(const void *, rectify_image_msg, rectify_image_msg_arg)
+    ctf_integer_hex(const void *, rectify_info_msg, rectify_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc rectify end of (after having rectified the image)
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,
   image_proc_rectify_fini,
+  TP_ARGS(
+    const void *, rectify_node_arg,
+    const void *, rectify_image_msg_arg,
+    const void *, rectify_info_msg_arg),
+  TP_FIELDS(
+    ctf_integer_hex(const void *, rectify_node, rectify_node_arg)
+    ctf_integer_hex(const void *, rectify_image_msg, rectify_image_msg_arg)
+    ctf_integer_hex(const void *, rectify_info_msg, rectify_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+
+// image_proc rectify and resize init callback
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,       // tracepoint provider name
+  image_proc_rectify_resize_cb_init,    // tracepoint name
+  TP_ARGS(
+    // input arguments, see https://lttng.org/docs/v2.12/#doc-tpp-def-input-args
+    const void *, rectify_node_arg,
+    const void *, rectify_image_msg_arg,
+    const void *, rectify_info_msg_arg),
+  TP_FIELDS(
+    // output event fields, see https://lttng.org/man/3/lttng-ust/v2.12/#doc-ctf-macros
+    ctf_integer_hex(const void *, rectify_node, rectify_node_arg)
+    ctf_integer_hex(const void *, rectify_image_msg, rectify_image_msg_arg)
+    ctf_integer_hex(const void *, rectify_info_msg, rectify_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc rectify and resize end of callback (after publication)
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,
+  image_proc_rectify_resize_cb_fini,
   TP_ARGS(
     const void *, rectify_node_arg,
     const void *, rectify_image_msg_arg,

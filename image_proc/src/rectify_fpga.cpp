@@ -33,6 +33,7 @@
 #include <chrono>
 
 #include "image_proc/rectify_fpga.hpp"
+#include "tracetools_image_pipeline/tracetools.h"
 
 namespace image_geometry
 {
@@ -67,7 +68,6 @@ PinholeCameraModelFPGA::PinholeCameraModelFPGA()
 {
   // Load the acceleration kernel
   // NOTE: hardcoded path according to dfx-mgrd conventions
-  // TODO: generalize this in the future
   cl_int err;
   unsigned fileBufSize;
 
@@ -77,8 +77,11 @@ PinholeCameraModelFPGA::PinholeCameraModelFPGA()
   OCL_CHECK(err, queue_ = new cl::CommandQueue(*context_, device, CL_QUEUE_PROFILING_ENABLE, &err));
   OCL_CHECK(err, std::string device_name = device.getInfo<CL_DEVICE_NAME>(&err));
   std::cout << "INFO: Device found - " << device_name << std::endl;
-  // TODO: Reconsider this file hardcoded in here
-  char* fileBuf = read_binary_file("/lib/firmware/xilinx/image_proc/rectify_accel.xclbin", fileBufSize);
+  // TODO: generalize this using launch extra_args for composable Nodes
+  // see https://github.com/ros2/launch_ros/blob/master/launch_ros/launch_ros/descriptions/composable_node.py#L45
+  //
+  // use "extra_arguments" from ComposableNode and propagate the value to this class constructor
+  char* fileBuf = read_binary_file("/lib/firmware/xilinx/image_proc/image_proc.xclbin", fileBufSize);
   cl::Program::Binaries bins{{fileBuf, fileBufSize}};
   devices.resize(1);
   OCL_CHECK(err, cl::Program program(*context_, devices, bins, NULL, &err));
@@ -222,14 +225,14 @@ void PinholeCameraModelFPGA::rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat&
   //  CV_32FC1 - 5
   //  CV_32FC2 - 13
   //  CV_16UC1 - 2
-  std::cout << "CV_32FC2: " << CV_32FC2 << std::endl;
-  std::cout << "CV_16SC2: " << CV_16SC2 << std::endl;
-  std::cout << "CV_32FC1: " << CV_32FC1 << std::endl;
-  std::cout << "CV_16UC1: " << CV_16UC1 << std::endl;
-  std::cout << "cache_->reduced_map1.type(): " << cache_->reduced_map1.type() << std::endl;
-  std::cout << "cache_->reduced_map2.type(): " << cache_->reduced_map2.type() << std::endl;
-  std::cout << "map_x.type(): " << map_x.type() << std::endl;
-  std::cout << "map_y.type(): " << map_y.type() << std::endl;
+  // std::cout << "CV_32FC2: " << CV_32FC2 << std::endl;
+  // std::cout << "CV_16SC2: " << CV_16SC2 << std::endl;
+  // std::cout << "CV_32FC1: " << CV_32FC1 << std::endl;
+  // std::cout << "CV_16UC1: " << CV_16UC1 << std::endl;
+  // std::cout << "cache_->reduced_map1.type(): " << cache_->reduced_map1.type() << std::endl;
+  // std::cout << "cache_->reduced_map2.type(): " << cache_->reduced_map2.type() << std::endl;
+  // std::cout << "map_x.type(): " << map_x.type() << std::endl;
+  // std::cout << "map_y.type(): " << map_y.type() << std::endl;
 
   //  REVIEW: Vitis Vision Library reviewed does not seem to offer
   //  capabilities to differentiate between CV_32F and CV_64F. It'd be nice
@@ -379,7 +382,18 @@ void RectifyNodeFPGA::imageCb(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
 
+  TRACEPOINT(
+    image_proc_rectify_cb_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
+
   if (pub_rect_.getNumSubscribers() < 1) {
+    TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -388,6 +402,11 @@ void RectifyNodeFPGA::imageCb(
     RCLCPP_ERROR(
       this->get_logger(), "Rectified topic '%s' requested but camera publishing '%s' "
       "is uncalibrated", pub_rect_.getTopic().c_str(), sub_camera_.getInfoTopic().c_str());
+    TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -404,6 +423,11 @@ void RectifyNodeFPGA::imageCb(
   // This will be true if D is empty/zero sized
   if (zero_distortion) {
     pub_rect_.publish(image_msg);
+    TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -418,14 +442,30 @@ void RectifyNodeFPGA::imageCb(
   cv::Mat rect;
 
   // Rectify
+  TRACEPOINT(
+    image_proc_rectify_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
   // model_.rectifyImage(image, rect, interpolation);  // CPU computation
-  // model_.rectifyImageFPGA(image, rect, gray);  // FPGA computation
-  model_.rectifyImageFPGA_debug(image, rect, gray);  // CPU and FPGA debug computations
+  // model_.rectifyImageFPGA_debug(image, rect, gray);  // CPU and FPGA debug computations
+  model_.rectifyImageFPGA(image, rect, gray);  // FPGA computation
+  TRACEPOINT(
+    image_proc_rectify_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
   // Allocate new rectified image message
   sensor_msgs::msg::Image::SharedPtr rect_msg =
     cv_bridge::CvImage(image_msg->header, image_msg->encoding, rect).toImageMsg();
   pub_rect_.publish(rect_msg);
+
+  TRACEPOINT(
+    image_proc_rectify_cb_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 }
 
 }  // namespace image_proc

@@ -79,18 +79,17 @@ void RectifyNode::imageCb(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
   TRACEPOINT(
-    image_proc_rectify_init,
+    image_proc_rectify_cb_init,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
 
   if (pub_rect_.getNumSubscribers() < 1) {
     TRACEPOINT(
-      image_proc_rectify_fini,
+      image_proc_rectify_cb_fini,
       static_cast<const void *>(this),
       static_cast<const void *>(&(*image_msg)),
       static_cast<const void *>(&(*info_msg)));
-
     return;
   }
 
@@ -100,7 +99,7 @@ void RectifyNode::imageCb(
       this->get_logger(), "Rectified topic '%s' requested but camera publishing '%s' "
       "is uncalibrated", pub_rect_.getTopic().c_str(), sub_camera_.getInfoTopic().c_str());
     TRACEPOINT(
-      image_proc_rectify_fini,
+      image_proc_rectify_cb_fini,
       static_cast<const void *>(this),
       static_cast<const void *>(&(*image_msg)),
       static_cast<const void *>(&(*info_msg)));
@@ -121,7 +120,7 @@ void RectifyNode::imageCb(
   if (zero_distortion) {
     pub_rect_.publish(image_msg);
     TRACEPOINT(
-      image_proc_rectify_fini,
+      image_proc_rectify_cb_fini,
       static_cast<const void *>(this),
       static_cast<const void *>(&(*image_msg)),
       static_cast<const void *>(&(*info_msg)));
@@ -136,7 +135,17 @@ void RectifyNode::imageCb(
   cv::Mat rect;
 
   // Rectify and publish
+  TRACEPOINT(
+    image_proc_rectify_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
   model_.rectifyImage(image, rect, interpolation);
+  TRACEPOINT(
+    image_proc_rectify_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
   // Allocate new rectified image message
   sensor_msgs::msg::Image::SharedPtr rect_msg =
@@ -144,7 +153,7 @@ void RectifyNode::imageCb(
   pub_rect_.publish(rect_msg);
 
   TRACEPOINT(
-    image_proc_rectify_fini,
+    image_proc_rectify_cb_fini,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));

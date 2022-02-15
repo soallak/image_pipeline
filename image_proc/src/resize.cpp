@@ -72,17 +72,20 @@ void ResizeNode::imageCb(
   sensor_msgs::msg::Image::ConstSharedPtr image_msg,
   sensor_msgs::msg::CameraInfo::ConstSharedPtr info_msg)
 {
-  // getNumSubscribers has a bug/doesn't work
-  // Eventually revisit and figure out how to make this work
-  // if (pub_image_.getNumSubscribers() < 1) {
-  //  return;
-  //}
-
   TRACEPOINT(
-    image_proc_resize_init,
+    image_proc_resize_cb_init,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
+
+  if (pub_image_.getNumSubscribers() < 1) {
+    TRACEPOINT(
+      image_proc_resize_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
+    return;
+  }
 
   cv_bridge::CvImagePtr cv_ptr;
 
@@ -90,14 +93,24 @@ void ResizeNode::imageCb(
     cv_ptr = cv_bridge::toCvCopy(image_msg);
   } catch (cv_bridge::Exception & e) {
     TRACEPOINT(
-      image_proc_resize_fini,
+      image_proc_resize_cb_fini,
       static_cast<const void *>(this),
       static_cast<const void *>(&(*image_msg)),
       static_cast<const void *>(&(*info_msg)));
     RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+    TRACEPOINT(
+      image_proc_resize_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
+  TRACEPOINT(
+    image_proc_resize_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
   if (use_scale_) {
     cv::resize(
       cv_ptr->image, cv_ptr->image, cv::Size(0, 0), scale_width_,
@@ -107,6 +120,11 @@ void ResizeNode::imageCb(
     int width = width_ == -1 ? image_msg->width : width_;
     cv::resize(cv_ptr->image, cv_ptr->image, cv::Size(width, height), 0, 0, interpolation_);
   }
+  TRACEPOINT(
+    image_proc_resize_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
   sensor_msgs::msg::CameraInfo::SharedPtr dst_info_msg =
     std::make_shared<sensor_msgs::msg::CameraInfo>(*info_msg);
@@ -140,7 +158,7 @@ void ResizeNode::imageCb(
   pub_image_.publish(*cv_ptr->toImageMsg(), *dst_info_msg);
 
   TRACEPOINT(
-    image_proc_resize_fini,
+    image_proc_resize_cb_fini,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
@@ -151,6 +169,7 @@ void ResizeNode::imageCb(
 #include "rclcpp_components/register_node_macro.hpp"
 
 // Register the component with class_loader.
-// This acts as a sort of entry point, allowing the component to be discoverable when its library
+// This acts as a sort of entry point, allowing the
+// component to be discoverable when its library
 // is being loaded into a running process.
 RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::ResizeNode)

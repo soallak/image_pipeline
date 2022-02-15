@@ -30,10 +30,11 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <vitis_common/common/xf_headers.hpp>
+#include <vitis_common/common/utilities.hpp>
 
 #include "image_proc/xf_resize_config.h"
 #include "image_proc/resize_fpga.hpp"
-
+#include "tracetools_image_pipeline/tracetools.h"
 
 
 // Forward declaration of utility functions included at the end of this file
@@ -83,9 +84,10 @@ ResizeNodeFPGA::ResizeNodeFPGA(const rclcpp::NodeOptions & options)
 
   // Load binary:
   // NOTE: hardcoded path according to dfx-mgrd conventions
-  // TODO: generalize this
+  // TODO: generalize this using launch extra_args for composable Nodes
+  // see https://github.com/ros2/launch_ros/blob/master/launch_ros/launch_ros/descriptions/composable_node.py#L45
   char* fileBuf = read_binary_file(
-        "/lib/firmware/xilinx/image_proc/resize_accel.xclbin",
+        "/lib/firmware/xilinx/image_proc/image_proc.xclbin",
         fileBufSize);
   cl::Program::Binaries bins{{fileBuf, fileBufSize}};
   devices.resize(1);
@@ -99,13 +101,22 @@ void ResizeNodeFPGA::imageCb(
   sensor_msgs::msg::Image::ConstSharedPtr image_msg,
   sensor_msgs::msg::CameraInfo::ConstSharedPtr info_msg)
 {
-  this->get_parameter("profile", profile_);  // Update profile_
+  TRACEPOINT(
+    image_proc_resize_cb_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
-  // getNumSubscribers has a bug/doesn't work
-  // Eventually revisit and figure out how to make this work
-  // if (pub_image_.getNumSubscribers() < 1) {
-  //  return;
-  //}
+  if (pub_image_.getNumSubscribers() < 1) {
+    TRACEPOINT(
+      image_proc_resize_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
+    return;
+  }
+
+  this->get_parameter("profile", profile_);  // Update profile_
 
   // Converting ROS image messages to OpenCV images, for diggestion
   // with the Vitis Vision Library
@@ -119,6 +130,11 @@ void ResizeNodeFPGA::imageCb(
     cv_ptr = cv_bridge::toCvCopy(image_msg);
   } catch (cv_bridge::Exception & e) {
     RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+    TRACEPOINT(
+      image_proc_resize_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -153,6 +169,11 @@ void ResizeNodeFPGA::imageCb(
   dst_info_msg->p[5] = dst_info_msg->p[5] * scale_y;  // fy
   dst_info_msg->p[6] = dst_info_msg->p[6] * scale_y;  // cy
 
+  TRACEPOINT(
+    image_proc_resize_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
   // OpenCL section:
   cl_int err;
   size_t image_in_size_bytes, image_out_size_bytes;
@@ -196,22 +217,22 @@ void ResizeNodeFPGA::imageCb(
                          cv_ptr->image.data));    // Pointer to the data to copy
 
   // Profiling Objects
-  cl_ulong start = 0;
-  cl_ulong end = 0;
-  double diff_prof = 0.0f;
+  // cl_ulong start = 0;
+  // cl_ulong end = 0;
+  // double diff_prof = 0.0f;
   cl::Event event_sp;
 
   // Execute the kernel:
   OCL_CHECK(err, err = queue_->enqueueTask(*krnl_, NULL, &event_sp));
 
-  // Profiling Objects
-  if (profile_) {
-    clWaitForEvents(1, (const cl_event*)&event_sp);
-    event_sp.getProfilingInfo(CL_PROFILING_COMMAND_START, &start);
-    event_sp.getProfilingInfo(CL_PROFILING_COMMAND_END, &end);
-    diff_prof = end - start;
-    std::cout << "FPGA: " << (diff_prof / 1000000) << "ms" << std::endl;
-  }
+  // // Profiling Objects
+  // if (profile_) {
+  //   clWaitForEvents(1, (const cl_event*)&event_sp);
+  //   event_sp.getProfilingInfo(CL_PROFILING_COMMAND_START, &start);
+  //   event_sp.getProfilingInfo(CL_PROFILING_COMMAND_END, &end);
+  //   diff_prof = end - start;
+  //   std::cout << "FPGA: " << (diff_prof / 1000000) << "ms" << std::endl;
+  // }
 
   // Copying Device result data to Host memory
   OCL_CHECK(err,
@@ -245,106 +266,70 @@ void ResizeNodeFPGA::imageCb(
   }
 
   queue_->finish();
+  TRACEPOINT(
+    image_proc_resize_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
+
   pub_image_.publish(*output_image.toImageMsg(), *dst_info_msg);
 
+  TRACEPOINT(
+    image_proc_resize_cb_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
-  ///////////////////////////
-  // Validate, profile and benchmark
-  ///////////////////////////
-  if (profile_) {
-    cv::Mat result_ocv, error;
+  // ///////////////////////////
+  // // Validate, profile and benchmark
+  // ///////////////////////////
+  // if (profile_) {
+  //   cv::Mat result_ocv, error;
 
-    // create appropriate size and form for profiling variables
-    if (gray) {
-      result_ocv.create(cv::Size(dst_info_msg->width,
-                                  dst_info_msg->height), CV_8UC1);
-      error.create(cv::Size(dst_info_msg->width,
-                                  dst_info_msg->height), CV_8UC1);
-    } else {
-      result_ocv.create(cv::Size(dst_info_msg->width,
-                                  dst_info_msg->height), CV_8UC3);
-      error.create(cv::Size(dst_info_msg->width,
-                                dst_info_msg->height), CV_8UC3);
-    }
+  //   // create appropriate size and form for profiling variables
+  //   if (gray) {
+  //     result_ocv.create(cv::Size(dst_info_msg->width,
+  //                                 dst_info_msg->height), CV_8UC1);
+  //     error.create(cv::Size(dst_info_msg->width,
+  //                                 dst_info_msg->height), CV_8UC1);
+  //   } else {
+  //     result_ocv.create(cv::Size(dst_info_msg->width,
+  //                                 dst_info_msg->height), CV_8UC3);
+  //     error.create(cv::Size(dst_info_msg->width,
+  //                               dst_info_msg->height), CV_8UC3);
+  //   }
 
-    // Run in the CPU, with OpenCV
-    //  re-use variables set above
-    auto start = std::chrono::steady_clock::now();
-    cv::resize(cv_ptr->image, result_ocv,
-                cv::Size(dst_info_msg->width,
-                dst_info_msg->height),
-                scale_x, scale_y,
-                interpolation_);
-    auto end = std::chrono::steady_clock::now();
-    std::cout << "CPU: "
-        << std::chrono::duration_cast<
-          std::chrono::milliseconds>(end - start).count()
-        << " ms" << std::endl;
+  //   // Run in the CPU, with OpenCV
+  //   //  re-use variables set above
+  //   auto start = std::chrono::steady_clock::now();
+  //   cv::resize(cv_ptr->image, result_ocv,
+  //               cv::Size(dst_info_msg->width,
+  //               dst_info_msg->height),
+  //               scale_x, scale_y,
+  //               interpolation_);
+  //   auto end = std::chrono::steady_clock::now();
+  //   std::cout << "CPU: "
+  //       << std::chrono::duration_cast<
+  //         std::chrono::milliseconds>(end - start).count()
+  //       << " ms" << std::endl;
 
-    cv::absdiff(result_hls, result_ocv, error);
-    float err_per;
-    xf::cv::analyzeDiff(error, 5, err_per);
+  //   cv::absdiff(result_hls, result_ocv, error);
+  //   float err_per;
+  //   xf::cv::analyzeDiff(error, 5, err_per);
 
-    if (err_per > 1.0f) {
-        fprintf(stderr, "ERROR: Test Failed.\n ");
-    }
-    std::cout << "Test Passed " << std::endl;
-  }
-
+  //   if (err_per > 1.0f) {
+  //       fprintf(stderr, "ERROR: Test Failed.\n ");
+  //   }
+  //   std::cout << "Test Passed " << std::endl;
+  // }
 }
 
 }  // namespace image_proc
 
-
-// ------------------------------------------------------------------------------------
-// Utility functions
-// ------------------------------------------------------------------------------------
-std::vector<cl::Device> get_xilinx_devices()
-{
-    size_t i;
-    cl_int err;
-    std::vector<cl::Platform> platforms;
-    err = cl::Platform::get(&platforms);
-    cl::Platform platform;
-    for (i  = 0 ; i < platforms.size(); i++) {
-        platform = platforms[i];
-        std::string platformName = platform.getInfo<CL_PLATFORM_NAME>(&err);
-        if (platformName == "Xilinx") {
-            std::cout << "INFO: Found Xilinx Platform" << std::endl;
-            break;
-        }
-    }
-    if (i == platforms.size()) {
-        std::cout << "ERROR: Failed to find Xilinx platform" << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    // Getting ACCELERATOR Devices and selecting 1st such device
-    std::vector<cl::Device> devices;
-    err = platform.getDevices(CL_DEVICE_TYPE_ACCELERATOR, &devices);
-    return devices;
-}
-
-char* read_binary_file(const std::string &xclbin_file_name, unsigned &nb)
-{
-    if(access(xclbin_file_name.c_str(), R_OK) != 0) {
-        printf("ERROR: %s xclbin not available please build\n", xclbin_file_name.c_str());
-        exit(EXIT_FAILURE);
-    }
-    //Loading XCL Bin into char buffer
-    std::cout << "INFO: Loading '" << xclbin_file_name << "'\n";
-    std::ifstream bin_file(xclbin_file_name.c_str(), std::ifstream::binary);
-    bin_file.seekg (0, bin_file.end);
-    nb = bin_file.tellg();
-    bin_file.seekg (0, bin_file.beg);
-    char *buf = new char [nb];
-    bin_file.read(buf, nb);
-    return buf;
-}
-
 #include "rclcpp_components/register_node_macro.hpp"
 
 // Register the component with class_loader.
-// This acts as a sort of entry point, allowing the component to be discoverable when its library
+// This acts as a sort of entry point, allowing the component
+// to be discoverable when its library
 // is being loaded into a running process.
 RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::ResizeNodeFPGA)

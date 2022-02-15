@@ -59,9 +59,41 @@ extern "C"
  */
 TRACETOOLS_PUBLIC bool ros_trace_compile_status();
 
-/// `image_proc_resize_init`
+/// `image_proc_resize_cb_init`
 /**
  * Tracepoint while initiating the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] resize_node rclcpp::node::Node subject to the callback
+ * \param[in] resize_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] resize_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_resize_cb_init,
+  const void * resize_node,
+  const void * resize_image_msg,
+  const void * resize_info_msg)
+
+/// `image_proc_resize_cb_fini`
+/**
+ * Tracepoint while finishing the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] resize_node rclcpp::node::Node subject to the callback
+ * \param[in] resize_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] resize_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_resize_cb_fini,
+  const void * resize_node,
+  const void * resize_image_msg,
+  const void * resize_info_msg)
+
+/// `image_proc_resize_init`
+/**
+ * Tracepoint while initiating the resize operation
  *
  * Notes the `tracetools_image_pipeline` version automatically.
  *
@@ -77,7 +109,7 @@ DECLARE_TRACEPOINT(
 
 /// `image_proc_resize_fini`
 /**
- * Tracepoint while finishing the callback of image_proc::ResizeNode component
+ * Tracepoint while finishing the resize operation
  *
  * Notes the `tracetools_image_pipeline` version automatically.
  *
@@ -91,9 +123,41 @@ DECLARE_TRACEPOINT(
   const void * resize_image_msg,
   const void * resize_info_msg)
 
-/// `image_proc_rectify_init`
+/// `image_proc_rectify_cb_init`
 /**
  * Tracepoint while initiating the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] rectify_node rclcpp::node::Node subject to the callback
+ * \param[in] rectify_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] rectify_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_rectify_cb_init,
+  const void * rectify_node,
+  const void * rectify_image_msg,
+  const void * rectify_info_msg)
+
+/// `image_proc_rectify_cb_fini`
+/**
+ * Tracepoint while finishing the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] rectify_node rclcpp::node::Node subject to the callback
+ * \param[in] rectify_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] rectify_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_rectify_cb_fini,
+  const void * rectify_node,
+  const void * rectify_image_msg,
+  const void * rectify_info_msg)
+
+/// `image_proc_rectify_init`
+/**
+ * Tracepoint while initiating the rectification operation
  *
  * Notes the `tracetools_image_pipeline` version automatically.
  *
@@ -109,7 +173,7 @@ DECLARE_TRACEPOINT(
 
 /// `image_proc_rectify_fini`
 /**
- * Tracepoint while finishing the callback of image_proc::ResizeNode component
+ * Tracepoint while finishing rectification operation
  *
  * Notes the `tracetools_image_pipeline` version automatically.
  *
@@ -123,6 +187,37 @@ DECLARE_TRACEPOINT(
   const void * rectify_image_msg,
   const void * rectify_info_msg)
 
+/// `image_proc_rectify_resize_cb_init`
+/**
+ * Tracepoint while initiating the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] rectify_node rclcpp::node::Node subject to the callback
+ * \param[in] rectify_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] rectify_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_rectify_resize_cb_init,
+  const void * rectify_node,
+  const void * rectify_image_msg,
+  const void * rectify_info_msg)
+
+/// `image_proc_rectify_resize_cb_fini`
+/**
+ * Tracepoint while finishing the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] rectify_node rclcpp::node::Node subject to the callback
+ * \param[in] rectify_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] rectify_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_rectify_resize_cb_fini,
+  const void * rectify_node,
+  const void * rectify_image_msg,
+  const void * rectify_info_msg)
 
 #ifdef __cplusplus
 }

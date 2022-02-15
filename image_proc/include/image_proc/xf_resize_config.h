@@ -22,29 +22,6 @@
 #include <vitis_common/common/xf_common.hpp>
 #include <vitis_common/imgproc/xf_resize.hpp>
 
-/* Interface types */
-#if RO
-
-#if RGB
-#define NPC_T XF_NPPC4
-#else
-#define NPC_T XF_NPPC8
-#endif
-
-#else
-#define NPC_T XF_NPPC1
-#endif
-
-#if RGB
-#define TYPE XF_8UC3
-#define CH_TYPE XF_RGB
-#else
-#define TYPE XF_8UC1
-#define CH_TYPE XF_GRAY
-#endif
-
-#endif
-
 /* resize kernel configuration */
 
 #define RO 0 // Resource Optimized (8-pixel implementation)
@@ -73,3 +50,26 @@
 /* Output image Dimensions */
 #define NEWWIDTH 1280  // Maximum output image width
 #define NEWHEIGHT 960 // Maximum output image height
+
+/* Interface types */
+#if RO
+
+#if RGB
+#define NPC_T XF_NPPC4
+#else
+#define NPC_T XF_NPPC8
+#endif
+
+#else
+#define NPC_T XF_NPPC1
+#endif
+
+#if RGB
+#define TYPE XF_8UC3
+#define CH_TYPE XF_RGB
+#else
+#define TYPE XF_8UC1
+#define CH_TYPE XF_GRAY
+#endif
+
+#endif
