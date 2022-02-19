@@ -34,20 +34,17 @@
 
 #include <vitis_common/common/ros_opencl_120.hpp>
 
-#include "experimental/xrt_bo.h"
-#include "experimental/xrt_device.h"
-#include "experimental/xrt_kernel.h"
 
 namespace image_geometry
 {
 
-class PinholeCameraModelFPGAStreamlined: public image_geometry::PinholeCameraModel
+class PinholeCameraModelFPGAIntegrated: public image_geometry::PinholeCameraModel
 {
 public:
 
   /* \brief Constructor
    */
-  PinholeCameraModelFPGAStreamlined();
+  PinholeCameraModelFPGAIntegrated();
 
   /**
    * \brief Rectify a raw camera image offloading the remapping to the FPGA.
@@ -55,21 +52,19 @@ public:
    *  TODO: Consider pushing OpenCV cv::initRectificationMaps also to the FPGA
    *  by using Vitis Vision Library xf::cv::InitUndistortRectifyMapInverse
    */
-  void rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
+  void rectifyResizeImageFPGA(const cv::Mat& raw,
+    cv::Mat& rectified,
+    sensor_msgs::msg::CameraInfo::SharedPtr dst_info_msg,
+    sensor_msgs::msg::Image::ConstSharedPtr image_msg,
+    sensor_msgs::msg::CameraInfo::ConstSharedPtr info_msg,
+    bool gray) const;
 
-  /**
-   * \brief Auxiliary method to debug rectification across CPU and FPGA
-   */
-  void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
 private:
   cl::Kernel* krnl_;
   cl::Context* context_;
   cl::CommandQueue* queue_;
 
-  // xrt::device device;
-  // xrt::uuid uuid;
-  // xrt::kernel krnl_rectify;
 };
 
 } //namespace image_geometry
@@ -88,6 +83,7 @@ private:
 
   int queue_size_;
   int interpolation;
+
   bool use_scale_;
   bool profile_;
   double scale_height_;
@@ -95,28 +91,14 @@ private:
   int height_;
   int width_;
 
-  // xrt::device device;
-  // xrt::uuid uuid;
-  // xrt::kernel krnl_resize;
-
-  cl::Kernel* krnl_;
-  cl::Context* context_;
-  cl::CommandQueue* queue_;
-
   std::mutex connect_mutex_;
-
   // image_transport::Publisher pub_rect_;
   image_transport::CameraPublisher pub_image_;
 
   // Processing state (note: only safe because we're using single-threaded NodeHandle!)
-  image_geometry::PinholeCameraModelFPGAStreamlined model_;
+  image_geometry::PinholeCameraModelFPGAIntegrated model_;
 
   void subscribeToCamera();
-  void resizeImageFPGA(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg,
-    bool gray);
-
   void imageCb(
     const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);

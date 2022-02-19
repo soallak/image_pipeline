@@ -67,9 +67,9 @@ private:
   cl::Context* context_;
   cl::CommandQueue* queue_;
 
-  // xrt::device device;
-  // xrt::uuid uuid;
-  // xrt::kernel krnl_rectify;
+  xrt::device device;
+  xrt::uuid uuid;
+  xrt::kernel krnl_rectify;
 };
 
 } //namespace image_geometry
@@ -95,13 +95,9 @@ private:
   int height_;
   int width_;
 
-  // xrt::device device;
-  // xrt::uuid uuid;
-  // xrt::kernel krnl_resize;
-
-  cl::Kernel* krnl_;
-  cl::Context* context_;
-  cl::CommandQueue* queue_;
+  xrt::device device;
+  xrt::uuid uuid;
+  xrt::kernel krnl_resize;
 
   std::mutex connect_mutex_;
 

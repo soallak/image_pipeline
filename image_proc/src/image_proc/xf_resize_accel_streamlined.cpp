@@ -20,7 +20,7 @@
 
 #include "xf_resize_config.h"
 
-#define DWIDTH 32
+#define DWIDTH 24
 
 extern "C" {
     void resize_accel_streamlined(
@@ -42,25 +42,45 @@ extern "C" {
         #pragma HLS INTERFACE s_axilite port=return
         // clang-format on
 
-        // xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC_T> in_mat(rows_in, cols_in);
-        // // clang-format off
-        // #pragma HLS stream variable=in_mat.data depth=2
-        // // clang-format on
+        xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC_T> in_mat(rows_in, cols_in);
+        #pragma HLS stream variable=in_mat.data depth=2
 
         xf::cv::Mat<TYPE, NEWHEIGHT, NEWWIDTH, NPC_T> out_mat(rows_out, cols_out);
-        // clang-format off
         #pragma HLS stream variable=out_mat.data depth=2
-        // clang-format on
-
-        // clang-format off
         #pragma HLS DATAFLOW
-        // clang-format on
 
         // xf::cv::Array2xfMat<INPUT_PTR_WIDTH, TYPE, HEIGHT, WIDTH, NPC_T>(img_inp, in_mat);
-
         // ap_axiu<DWIDTH, 0, 0, 0> stream_in = img_inp.read();
+
+    //     int readindex = 0, writeindex = 0;
+    // Row_Loop:
+    //     for (auto row = 0; row < HEIGHT; row++) {
+    // // clang-format off
+    // // #pragma HLS LOOP_TRIPCOUNT min=HEIGHT max=HEIGHT
+    // #pragma HLS LOOP_FLATTEN off
+    //     // clang-format on
+    //     Col_Loop:
+    //         for (auto col = 0; col < WIDTH; col++) {
+    // // clang-format off
+    // // #pragma HLS LOOP_TRIPCOUNT min=WIDTH/NPC max=WIDTH/NPC
+    // #pragma HLS pipeline
+    //             // clang-format on
+
+    //             // XF_TNAME(TYPE, NPC) tmp_src;
+    //             // tmp_src = imgOutput.read(readindex++);
+    //             // img_out.write(writeindex++, tmp_src);
+
+    //             // ap_uint<DWIDTH> aux;
+    //             // img_inp.read(aux);
+    //             ap_axiu<DWIDTH, 0, 0, 0> aux;
+    //             aux = img_inp.read();
+    //             in_mat.write(writeindex++, aux.data);
+
+    //         }
+    //     }
 
         xf::cv::resize<INTERPOLATION, TYPE, HEIGHT, WIDTH, NEWHEIGHT, NEWWIDTH, NPC_T, MAXDOWNSCALE>(img_inp, out_mat);
         xf::cv::xfMat2Array<OUTPUT_PTR_WIDTH, TYPE, NEWHEIGHT, NEWWIDTH, NPC_T>(out_mat, img_out);
+        return;
     }
 }

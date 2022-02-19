@@ -48,7 +48,7 @@
 #define XF_CAMERA_MATRIX_SIZE 9
 #define XF_DIST_COEFF_SIZE 5
 
-#define DWIDTH 32
+#define DWIDTH 24
 
 extern "C" {
 
@@ -74,7 +74,7 @@ extern "C" {
       xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgInput(rows, cols);
       xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapX(rows, cols);
       xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapY(rows, cols);
-      xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgOutput(rows, cols);
+    //   xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgOutput(rows, cols);
 
       const int HEIGHT_WIDTH_LOOPCOUNT = HEIGHT * WIDTH / XF_NPIXPERCYCLE(NPC);
       for (unsigned int i = 0; i < rows * cols; ++i) {
@@ -90,7 +90,7 @@ extern "C" {
       #pragma HLS STREAM variable=imgInput.data depth=2
       #pragma HLS STREAM variable=mapX.data depth=2
       #pragma HLS STREAM variable=mapY.data depth=2
-      #pragma HLS STREAM variable=imgOutput.data depth=2
+    //   #pragma HLS STREAM variable=imgOutput.data depth=2
 
       #pragma HLS DATAFLOW
 
@@ -106,21 +106,31 @@ extern "C" {
       xf::cv::remap<XF_WIN_ROWS, XF_INTERPOLATION_TYPE, TYPE, TYPE_XY, TYPE, HEIGHT, WIDTH, NPC, XF_USE_URAM>(
           imgInput, img_out, mapX, mapY);
 
-      // ap_axiu<DWIDTH, 0, 0, 0> stream_out;
-      // stream_out.data = imgOutput
-      // out.write(stream_out);
+//       int readindex = 0, writeindex = 0;
+//   Row_Loop:
+//       for (auto row = 0; row < HEIGHT; row++) {
+//   // clang-format off
+//   // #pragma HLS LOOP_TRIPCOUNT min=HEIGHT max=HEIGHT
+//   #pragma HLS LOOP_FLATTEN off
+//       // clang-format on
+//       Col_Loop:
+//           for (auto col = 0; col < WIDTH; col++) {
+//   // clang-format off
+//   // #pragma HLS LOOP_TRIPCOUNT min=WIDTH/NPC max=WIDTH/NPC
+//   #pragma HLS pipeline
+//               // clang-format on
 
-      // Convert _dst xf::cv::Mat object to output array:
-      // xf::cv::xfMat2Array<PTR_IMG_WIDTH, TYPE, HEIGHT, WIDTH, NPC>(imgOutput, stream_out);
+//               // XF_TNAME(TYPE, NPC) tmp_src;
+//               // tmp_src = imgOutput.read(readindex++);
+//               // img_out.write(writeindex++, tmp_src);
 
-      // // mistmatching call
-      // img_out.write(imgOutput);
+//               ap_uint<DWIDTH> aux = imgOutput.read(readindex++);
+//               ap_axiu<DWIDTH, 0, 0, 0> stream_out;
+//               stream_out.data = aux;
+//               img_out.write(stream_out);
 
-      // int writeindex = 0;
-      // XF_TNAME(TYPE, NPC) tmp_src;
-      // tmp_src = imgOutput
-      // // void write(int index, XF_TNAME(T,NPC) val);
-      // ltm_in.write(writeindex++, tmp_src);
+//           }
+//       }
 
       return;
   } // End of kernel
