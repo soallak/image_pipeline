@@ -65,6 +65,9 @@ private:
   cl::Context* context_;
   cl::CommandQueue* queue_;
 
+  // xrt::device device;
+  // xrt::uuid uuid;
+  // xrt::kernel krnl_rectify;
 };
 
 } //namespace image_geometry

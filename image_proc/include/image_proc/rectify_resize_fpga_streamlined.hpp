@@ -63,13 +63,13 @@ public:
   void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
 private:
-  cl::Kernel* krnl_;
-  cl::Context* context_;
-  cl::CommandQueue* queue_;
+  // cl::Kernel* krnl_;
+  // cl::Context* context_;
+  // cl::CommandQueue* queue_;
 
-  // xrt::device device;
-  // xrt::uuid uuid;
-  // xrt::kernel krnl_rectify;
+  xrt::device device;
+  xrt::uuid uuid;
+  xrt::kernel krnl_rectify;
 };
 
 } //namespace image_geometry
@@ -95,13 +95,13 @@ private:
   int height_;
   int width_;
 
-  // xrt::device device;
-  // xrt::uuid uuid;
-  // xrt::kernel krnl_resize;
+  xrt::device device;
+  xrt::uuid uuid;
+  xrt::kernel krnl_resize;
 
-  cl::Kernel* krnl_;
-  cl::Context* context_;
-  cl::CommandQueue* queue_;
+  // cl::Kernel* krnl_;
+  // cl::Context* context_;
+  // cl::CommandQueue* queue_;
 
   std::mutex connect_mutex_;
 

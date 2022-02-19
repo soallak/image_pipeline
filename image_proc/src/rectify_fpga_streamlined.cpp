@@ -136,7 +136,7 @@ void PinholeCameraModelFPGA::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& recti
         int cols = raw.cols;
         OCL_CHECK(err, err = krnl_->setArg(0, buffer_inImage));
         OCL_CHECK(err, err = krnl_->setArg(1, buffer_inMapX));
-        OCL_CHECK(err, err = krnl_->setArg(2, buffer_inMapY));
+        OCL_CHECK(err, err = krnl_->setArg(2, buffer_inMapY));        
         // OCL_CHECK(err, err = krnl_->setArg(3, buffer_outImage));
         OCL_CHECK(err, err = krnl_->setArg(4, rows));
         OCL_CHECK(err, err = krnl_->setArg(5, cols));

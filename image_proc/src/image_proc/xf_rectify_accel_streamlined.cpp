@@ -49,6 +49,9 @@
 #define XF_DIST_COEFF_SIZE 5
 
 #define DWIDTH 24
+const int dwidth_tripcount = WIDTH/NPC;
+const int height_tripcount = HEIGHT;
+
 
 extern "C" {
 
@@ -56,9 +59,9 @@ extern "C" {
       ap_uint<PTR_IMG_WIDTH>* img_in,
       float* map_x,
       float* map_y,
+      hls::stream<ap_axiu<DWIDTH, 0, 0, 0>>& img_out,
       // ap_uint<PTR_IMG_WIDTH>* img_out,
-      // hls::stream<ap_axiu<DWIDTH, 0, 0, 0>>& img_out,
-      xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC>& img_out,
+      // xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC>& img_out,
       int rows,
       int cols) {
 
@@ -74,7 +77,7 @@ extern "C" {
       xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgInput(rows, cols);
       xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapX(rows, cols);
       xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapY(rows, cols);
-    //   xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgOutput(rows, cols);
+      xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgOutput(rows, cols);
 
       const int HEIGHT_WIDTH_LOOPCOUNT = HEIGHT * WIDTH / XF_NPIXPERCYCLE(NPC);
       for (unsigned int i = 0; i < rows * cols; ++i) {
@@ -90,7 +93,7 @@ extern "C" {
       #pragma HLS STREAM variable=imgInput.data depth=2
       #pragma HLS STREAM variable=mapX.data depth=2
       #pragma HLS STREAM variable=mapY.data depth=2
-    //   #pragma HLS STREAM variable=imgOutput.data depth=2
+      #pragma HLS STREAM variable=imgOutput.data depth=2
 
       #pragma HLS DATAFLOW
 
@@ -104,33 +107,23 @@ extern "C" {
 
       // remap accordingly
       xf::cv::remap<XF_WIN_ROWS, XF_INTERPOLATION_TYPE, TYPE, TYPE_XY, TYPE, HEIGHT, WIDTH, NPC, XF_USE_URAM>(
-          imgInput, img_out, mapX, mapY);
+          imgInput, imgOutput, mapX, mapY);
 
-//       int readindex = 0, writeindex = 0;
-//   Row_Loop:
-//       for (auto row = 0; row < HEIGHT; row++) {
-//   // clang-format off
-//   // #pragma HLS LOOP_TRIPCOUNT min=HEIGHT max=HEIGHT
-//   #pragma HLS LOOP_FLATTEN off
-//       // clang-format on
-//       Col_Loop:
-//           for (auto col = 0; col < WIDTH; col++) {
-//   // clang-format off
-//   // #pragma HLS LOOP_TRIPCOUNT min=WIDTH/NPC max=WIDTH/NPC
-//   #pragma HLS pipeline
-//               // clang-format on
-
-//               // XF_TNAME(TYPE, NPC) tmp_src;
-//               // tmp_src = imgOutput.read(readindex++);
-//               // img_out.write(writeindex++, tmp_src);
-
-//               ap_uint<DWIDTH> aux = imgOutput.read(readindex++);
-//               ap_axiu<DWIDTH, 0, 0, 0> stream_out;
-//               stream_out.data = aux;
-//               img_out.write(stream_out);
-
-//           }
-//       }
+      int readindex = 0, writeindex = 0;
+  Row_Loop:
+      for (auto row = 0; row < HEIGHT; row++) {
+  #pragma HLS LOOP_TRIPCOUNT min=height_tripcount max=height_tripcount
+  #pragma HLS LOOP_FLATTEN off
+      Col_Loop:
+          for (auto col = 0; col < WIDTH; col++) {
+  #pragma HLS LOOP_TRIPCOUNT min=dwidth_tripcount max=dwidth_tripcount
+  #pragma HLS pipeline
+              ap_uint<DWIDTH> aux = imgOutput.read(readindex++);
+              ap_axiu<DWIDTH, 0, 0, 0> stream_out;
+              stream_out.data = aux;
+              img_out.write(stream_out);
+          }
+      }
 
       return;
   } // End of kernel
