@@ -19,8 +19,8 @@
       Joshua Whitley
 */
 
-#ifndef IMAGE_PROC__RECTIFY_RESIZE_FPGA_HPP_
-#define IMAGE_PROC__RECTIFY_RESIZE_FPGA_HPP_
+#ifndef IMAGE_PROC__RECTIFY_FPGA_STREAMLINED_HPP_
+#define IMAGE_PROC__RECTIFY_FPGA_STREAMLINED_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <image_transport/image_transport.hpp>
@@ -32,19 +32,23 @@
 #include <vector>
 #include <string>
 
+#include "experimental/xrt_bo.h"
+#include "experimental/xrt_device.h"
+#include "experimental/xrt_kernel.h"
+
 #include <vitis_common/common/ros_opencl_120.hpp>
 
 
 namespace image_geometry
 {
 
-class PinholeCameraModelFPGAIntegrated: public image_geometry::PinholeCameraModel
+class PinholeCameraModelFPGAStreamlined: public image_geometry::PinholeCameraModel
 {
 public:
 
   /* \brief Constructor
    */
-  PinholeCameraModelFPGAIntegrated();
+  PinholeCameraModelFPGAStreamlined();
 
   /**
    * \brief Rectify a raw camera image offloading the remapping to the FPGA.
@@ -52,22 +56,21 @@ public:
    *  TODO: Consider pushing OpenCV cv::initRectificationMaps also to the FPGA
    *  by using Vitis Vision Library xf::cv::InitUndistortRectifyMapInverse
    */
-  void rectifyResizeImageFPGA(const cv::Mat& raw,
-    cv::Mat& rectified,
-    sensor_msgs::msg::CameraInfo::SharedPtr dst_info_msg,
-    sensor_msgs::msg::Image::ConstSharedPtr image_msg,
-    sensor_msgs::msg::CameraInfo::ConstSharedPtr info_msg,
-    bool gray) const;
+  void rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
+  /**
+   * \brief Auxiliary method to debug rectification across CPU and FPGA
+   */
+  void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
 private:
   cl::Kernel* krnl_;
   cl::Context* context_;
   cl::CommandQueue* queue_;
 
-  // xrt::device device;
-  // xrt::uuid uuid;
-  // xrt::kernel krnl_rectify;
+  xrt::device device;
+  xrt::uuid uuid;
+  xrt::kernel krnl_rectify;
 };
 
 } //namespace image_geometry
@@ -75,31 +78,22 @@ private:
 namespace image_proc
 {
 
-class RectifyResizeNodeFPGA
+class RectifyNodeFPGAStreamlined
   : public rclcpp::Node
 {
 public:
-  explicit RectifyResizeNodeFPGA(const rclcpp::NodeOptions &);
+  explicit RectifyNodeFPGAStreamlined(const rclcpp::NodeOptions &);
 
 private:
   image_transport::CameraSubscriber sub_camera_;
 
   int queue_size_;
   int interpolation;
-
-  bool use_scale_;
-  bool profile_;
-  double scale_height_;
-  double scale_width_;
-  int height_;
-  int width_;
-
   std::mutex connect_mutex_;
-  // image_transport::Publisher pub_rect_;
-  image_transport::CameraPublisher pub_image_;
+  image_transport::Publisher pub_rect_;
 
   // Processing state (note: only safe because we're using single-threaded NodeHandle!)
-  image_geometry::PinholeCameraModelFPGAIntegrated model_;
+  image_geometry::PinholeCameraModelFPGAStreamlined model_;
 
   void subscribeToCamera();
   void imageCb(
@@ -109,4 +103,4 @@ private:
 
 }  // namespace image_proc
 
-#endif  // IMAGE_PROC__RECTIFY_RESIZE_FPGA_HPP_
+#endif  // IMAGE_PROC__RECTIFY_FPGA_STREAMLINED_HPP_

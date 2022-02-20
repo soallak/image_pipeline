@@ -32,7 +32,7 @@
 #include <vector>
 #include <chrono>
 
-#include "image_proc/rectify_resize_fpga_streamlined_integrated.hpp"
+#include "image_proc/rectify_resize_fpga_integrated.hpp"
 #include "tracetools_image_pipeline/tracetools.h"
 
 namespace image_geometry
@@ -86,7 +86,7 @@ PinholeCameraModelFPGAIntegrated::PinholeCameraModelFPGAIntegrated()
   // use "extra_arguments" from ComposableNode and propagate
   // the value to this class constructor
   char* fileBuf = read_binary_file(
-    "/lib/firmware/xilinx/image_proc/image_proc.xclbin",
+    "/lib/firmware/xilinx/image_proc_integrated/image_proc_integrated.xclbin",
     fileBufSize);
   cl::Program::Binaries bins{{fileBuf, fileBufSize}};
   devices.resize(1);
@@ -223,8 +223,6 @@ void PinholeCameraModelFPGAIntegrated::rectifyResizeImageFPGA(
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
-
-
 }
 
 }  // namespace image_geometry

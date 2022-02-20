@@ -19,8 +19,8 @@
       Joshua Whitley
 */
 
-#ifndef IMAGE_PROC__RECTIFY_RESIZE_FPGA_STREAMLINED_XRT_HPP_
-#define IMAGE_PROC__RECTIFY_RESIZE_FPGA_STREAMLINED_XRT_HPP_
+#ifndef IMAGE_PROC__RECTIFY_FPGA_STREAMLINED_XRT_HPP_
+#define IMAGE_PROC__RECTIFY_FPGA_STREAMLINED_XRT_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <image_transport/image_transport.hpp>
@@ -32,11 +32,12 @@
 #include <vector>
 #include <string>
 
-#include <vitis_common/common/ros_opencl_120.hpp>
-
 #include "experimental/xrt_bo.h"
 #include "experimental/xrt_device.h"
 #include "experimental/xrt_kernel.h"
+
+#include <vitis_common/common/ros_opencl_120.hpp>
+
 
 namespace image_geometry
 {
@@ -63,9 +64,9 @@ public:
   void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
 private:
-  cl::Kernel* krnl_;
-  cl::Context* context_;
-  cl::CommandQueue* queue_;
+  // cl::Kernel* krnl_;
+  // cl::Context* context_;
+  // cl::CommandQueue* queue_;
 
   xrt::device device;
   xrt::uuid uuid;
@@ -77,46 +78,24 @@ private:
 namespace image_proc
 {
 
-class RectifyResizeNodeFPGAStreamlinedXRT
+class RectifyNodeFPGAStreamlinedXRT
   : public rclcpp::Node
 {
 public:
-  explicit RectifyResizeNodeFPGAStreamlinedXRT(const rclcpp::NodeOptions &);
+  explicit RectifyNodeFPGAStreamlinedXRT(const rclcpp::NodeOptions &);
 
 private:
   image_transport::CameraSubscriber sub_camera_;
 
   int queue_size_;
   int interpolation;
-  bool use_scale_;
-  bool profile_;
-  double scale_height_;
-  double scale_width_;
-  int height_;
-  int width_;
-
-  xrt::device device;
-  xrt::uuid uuid;
-  xrt::kernel krnl_resize;
-
-  cl::Kernel* krnl_;
-  cl::Context* context_;
-  cl::CommandQueue* queue_;
-
   std::mutex connect_mutex_;
-
-  // image_transport::Publisher pub_rect_;
-  image_transport::CameraPublisher pub_image_;
+  image_transport::Publisher pub_rect_;
 
   // Processing state (note: only safe because we're using single-threaded NodeHandle!)
   image_geometry::PinholeCameraModelFPGAStreamlinedXRT model_;
 
   void subscribeToCamera();
-  void resizeImageFPGA(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg,
-    bool gray);
-
   void imageCb(
     const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);
@@ -124,4 +103,4 @@ private:
 
 }  // namespace image_proc
 
-#endif  // IMAGE_PROC__RECTIFY_RESIZE_FPGA_STREAMLINED_XRT_HPP_
+#endif  // IMAGE_PROC__RECTIFY_FPGA_STREAMLINED_XRT_HPP_

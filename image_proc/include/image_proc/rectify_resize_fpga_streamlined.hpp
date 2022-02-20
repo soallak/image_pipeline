@@ -19,8 +19,8 @@
       Joshua Whitley
 */
 
-#ifndef IMAGE_PROC__RECTIFY_RESIZE_FPGA_HPP_
-#define IMAGE_PROC__RECTIFY_RESIZE_FPGA_HPP_
+#ifndef IMAGE_PROC__RECTIFY_RESIZE_FPGA_STREAMLINED_HPP_
+#define IMAGE_PROC__RECTIFY_RESIZE_FPGA_STREAMLINED_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <image_transport/image_transport.hpp>
@@ -34,9 +34,9 @@
 
 #include <vitis_common/common/ros_opencl_120.hpp>
 
-#include "experimental/xrt_bo.h"
-#include "experimental/xrt_device.h"
-#include "experimental/xrt_kernel.h"
+// #include "experimental/xrt_bo.h"
+// #include "experimental/xrt_device.h"
+// #include "experimental/xrt_kernel.h"
 
 namespace image_geometry
 {
@@ -63,13 +63,13 @@ public:
   void rectifyImageFPGA_debug(const cv::Mat& raw, cv::Mat& rectified, bool gray) const;
 
 private:
-  // cl::Kernel* krnl_;
-  // cl::Context* context_;
-  // cl::CommandQueue* queue_;
+  cl::Kernel* krnl_;
+  cl::Context* context_;
+  cl::CommandQueue* queue_;
 
-  xrt::device device;
-  xrt::uuid uuid;
-  xrt::kernel krnl_rectify;
+  // xrt::device device;
+  // xrt::uuid uuid;
+  // xrt::kernel krnl_rectify;
 };
 
 } //namespace image_geometry
@@ -77,11 +77,11 @@ private:
 namespace image_proc
 {
 
-class RectifyResizeNodeFPGA
+class RectifyResizeNodeFPGAStreamlined
   : public rclcpp::Node
 {
 public:
-  explicit RectifyResizeNodeFPGA(const rclcpp::NodeOptions &);
+  explicit RectifyResizeNodeFPGAStreamlined(const rclcpp::NodeOptions &);
 
 private:
   image_transport::CameraSubscriber sub_camera_;
@@ -95,13 +95,13 @@ private:
   int height_;
   int width_;
 
-  xrt::device device;
-  xrt::uuid uuid;
-  xrt::kernel krnl_resize;
+  // xrt::device device;
+  // xrt::uuid uuid;
+  // xrt::kernel krnl_resize;
 
-  // cl::Kernel* krnl_;
-  // cl::Context* context_;
-  // cl::CommandQueue* queue_;
+  cl::Kernel* krnl_;
+  cl::Context* context_;
+  cl::CommandQueue* queue_;
 
   std::mutex connect_mutex_;
 
@@ -124,4 +124,4 @@ private:
 
 }  // namespace image_proc
 
-#endif  // IMAGE_PROC__RECTIFY_RESIZE_FPGA_HPP_
+#endif  // IMAGE_PROC__RECTIFY_RESIZE_FPGA_STREAMLINED_HPP_

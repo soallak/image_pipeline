@@ -55,77 +55,80 @@ const int height_tripcount = HEIGHT;
 
 extern "C" {
 
-  void rectify_accel_streamlined(
-      ap_uint<PTR_IMG_WIDTH>* img_in,
-      float* map_x,
-      float* map_y,
-      hls::stream<ap_axiu<DWIDTH, 0, 0, 0>>& img_out,
-      // ap_uint<PTR_IMG_WIDTH>* img_out,
-      // xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC>& img_out,
-      int rows,
-      int cols) {
+    void rectify_accel_streamlined(
+        ap_uint<PTR_IMG_WIDTH>* img_in,
+        float* map_x,
+        float* map_y,
+        hls::stream<ap_axiu<DWIDTH, 0, 0, 0>>& img_out,
+        // hls::stream<xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC>>& img_out,
+        // ap_uint<PTR_IMG_WIDTH>* img_out,
+        // xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC>& img_out,
+        int rows,
+        int cols) {
 
-      #pragma HLS INTERFACE m_axi      port=img_in        offset=slave  bundle=gmem0
-      #pragma HLS INTERFACE m_axi      port=map_x         offset=slave  bundle=gmem1
-      #pragma HLS INTERFACE m_axi      port=map_y         offset=slave  bundle=gmem2
+        #pragma HLS INTERFACE m_axi      port=img_in        offset=slave  bundle=gmem0
+        #pragma HLS INTERFACE m_axi      port=map_x         offset=slave  bundle=gmem1
+        #pragma HLS INTERFACE m_axi      port=map_y         offset=slave  bundle=gmem2
     //   #pragma HLS INTERFACE m_axi      port=img_out       offset=slave  bundle=gmem3
-      #pragma HLS INTERFACE s_axilite  port=rows
-      #pragma HLS INTERFACE s_axilite  port=cols
-      #pragma HLS INTERFACE s_axilite  port=return
+        #pragma HLS INTERFACE s_axilite  port=rows
+        #pragma HLS INTERFACE s_axilite  port=cols
+        #pragma HLS INTERFACE s_axilite  port=return
 
-      // Get arguments for remap operation (remap)
-      xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgInput(rows, cols);
-      xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapX(rows, cols);
-      xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapY(rows, cols);
-      xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgOutput(rows, cols);
+        // Get arguments for remap operation (remap)
+        xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgInput(rows, cols);
+        xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapX(rows, cols);
+        xf::cv::Mat<TYPE_XY, HEIGHT, WIDTH, NPC> mapY(rows, cols);
+        xf::cv::Mat<TYPE, HEIGHT, WIDTH, NPC> imgOutput(rows, cols);
 
-      const int HEIGHT_WIDTH_LOOPCOUNT = HEIGHT * WIDTH / XF_NPIXPERCYCLE(NPC);
-      for (unsigned int i = 0; i < rows * cols; ++i) {
-  	#pragma HLS LOOP_TRIPCOUNT min=1 max=HEIGHT_WIDTH_LOOPCOUNT
-          #pragma HLS PIPELINE II=1
-          // clang-format on
-          float map_x_val = map_x[i];
-          float map_y_val = map_y[i];
-          mapX.write_float(i, map_x_val);
-          mapY.write_float(i, map_y_val);
-      }
+        const int HEIGHT_WIDTH_LOOPCOUNT = HEIGHT * WIDTH / XF_NPIXPERCYCLE(NPC);
+        for (unsigned int i = 0; i < rows * cols; ++i) {
+    #pragma HLS LOOP_TRIPCOUNT min=1 max=HEIGHT_WIDTH_LOOPCOUNT
+            #pragma HLS PIPELINE II=1
+            // clang-format on
+            float map_x_val = map_x[i];
+            float map_y_val = map_y[i];
+            mapX.write_float(i, map_x_val);
+            mapY.write_float(i, map_y_val);
+        }
 
-      #pragma HLS STREAM variable=imgInput.data depth=2
-      #pragma HLS STREAM variable=mapX.data depth=2
-      #pragma HLS STREAM variable=mapY.data depth=2
-      #pragma HLS STREAM variable=imgOutput.data depth=2
+        #pragma HLS STREAM variable=imgInput.data depth=2
+        #pragma HLS STREAM variable=mapX.data depth=2
+        #pragma HLS STREAM variable=mapY.data depth=2
+        #pragma HLS STREAM variable=imgOutput.data depth=2
 
-      #pragma HLS DATAFLOW
+        #pragma HLS DATAFLOW
 
-      // Retrieve xf::cv::Mat objects from img_in data:
-      xf::cv::Array2xfMat<PTR_IMG_WIDTH, TYPE, HEIGHT, WIDTH, NPC>(img_in, imgInput);
+        // Retrieve xf::cv::Mat objects from img_in data:
+        xf::cv::Array2xfMat<PTR_IMG_WIDTH, TYPE, HEIGHT, WIDTH, NPC>(img_in, imgInput);
 
-      // // obtain a mapping between the distorted image and an undistorted one
-      // xf::cv::InitUndistortRectifyMapInverse<XF_CAMERA_MATRIX_SIZE, XF_DIST_COEFF_SIZE, XF_32FC1, HEIGHT, WIDTH,
-      //                                  XF_NPPC1>(K_binned_fix, distC_l_fix, irA_l_fix, mapxLMat, mapyLMat,
-      //                                            _cm_size, _dc_size);
+        // // obtain a mapping between the distorted image and an undistorted one
+        // xf::cv::InitUndistortRectifyMapInverse<XF_CAMERA_MATRIX_SIZE, XF_DIST_COEFF_SIZE, XF_32FC1, HEIGHT, WIDTH,
+        //                                  XF_NPPC1>(K_binned_fix, distC_l_fix, irA_l_fix, mapxLMat, mapyLMat,
+        //                                            _cm_size, _dc_size);
 
-      // remap accordingly
-      xf::cv::remap<XF_WIN_ROWS, XF_INTERPOLATION_TYPE, TYPE, TYPE_XY, TYPE, HEIGHT, WIDTH, NPC, XF_USE_URAM>(
-          imgInput, imgOutput, mapX, mapY);
+        // remap accordingly
+        xf::cv::remap<XF_WIN_ROWS, XF_INTERPOLATION_TYPE, TYPE, TYPE_XY, TYPE, HEIGHT, WIDTH, NPC, XF_USE_URAM>(
+            imgInput, imgOutput, mapX, mapY);
 
-      int readindex = 0, writeindex = 0;
-  Row_Loop:
-      for (auto row = 0; row < HEIGHT; row++) {
-  #pragma HLS LOOP_TRIPCOUNT min=height_tripcount max=height_tripcount
-  #pragma HLS LOOP_FLATTEN off
-      Col_Loop:
-          for (auto col = 0; col < WIDTH; col++) {
-  #pragma HLS LOOP_TRIPCOUNT min=dwidth_tripcount max=dwidth_tripcount
-  #pragma HLS pipeline
-              ap_uint<DWIDTH> aux = imgOutput.read(readindex++);
-              ap_axiu<DWIDTH, 0, 0, 0> stream_out;
-              stream_out.data = aux;
-              img_out.write(stream_out);
-          }
-      }
+        // img_out.write(imgOutput);  // doesn't work out
 
-      return;
-  } // End of kernel
+        int readindex = 0, writeindex = 0;
+    Row_Loop:
+        for (auto row = 0; row < HEIGHT; row++) {
+    #pragma HLS LOOP_TRIPCOUNT min=height_tripcount max=height_tripcount
+    #pragma HLS LOOP_FLATTEN off
+        Col_Loop:
+            for (auto col = 0; col < WIDTH; col++) {
+    #pragma HLS LOOP_TRIPCOUNT min=dwidth_tripcount max=dwidth_tripcount
+    #pragma HLS pipeline
+                ap_uint<DWIDTH> aux = imgOutput.read(readindex++);
+                ap_axiu<DWIDTH, 0, 0, 0> stream_out;
+                stream_out.data = aux;
+                img_out.write(stream_out);
+            }
+        }
+
+        return;
+    } // End of kernel
 
 } // End of extern C

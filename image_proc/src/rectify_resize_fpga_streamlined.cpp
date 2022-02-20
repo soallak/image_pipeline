@@ -81,7 +81,7 @@ PinholeCameraModelFPGAStreamlined::PinholeCameraModelFPGAStreamlined()
   // see https://github.com/ros2/launch_ros/blob/master/launch_ros/launch_ros/descriptions/composable_node.py#L45
   //
   // use "extra_arguments" from ComposableNode and propagate the value to this class constructor
-  char* fileBuf = read_binary_file("/lib/firmware/xilinx/image_proc/image_proc.xclbin", fileBufSize);
+  char* fileBuf = read_binary_file("/lib/firmware/xilinx/image_proc_streamlined/image_proc_streamlined.xclbin", fileBufSize);
   cl::Program::Binaries bins{{fileBuf, fileBufSize}};
   devices.resize(1);
   OCL_CHECK(err, cl::Program program(*context_, devices, bins, NULL, &err));
@@ -204,8 +204,8 @@ void PinholeCameraModelFPGAStreamlined::rectifyImageFPGA(
 namespace image_proc
 {
 
-RectifyResizeNodeFPGA::RectifyResizeNodeFPGA(const rclcpp::NodeOptions & options)
-: Node("RectifyResizeNodeFPGA", options)
+RectifyResizeNodeFPGAStreamlined::RectifyResizeNodeFPGAStreamlined(const rclcpp::NodeOptions & options)
+: Node("RectifyResizeNodeFPGAStreamlined", options)
 {
   // rectify params
   queue_size_ = this->declare_parameter("queue_size", 5);
@@ -243,7 +243,7 @@ RectifyResizeNodeFPGA::RectifyResizeNodeFPGA(const rclcpp::NodeOptions & options
   // TODO: generalize this using launch extra_args for composable Nodes
   // see https://github.com/ros2/launch_ros/blob/master/launch_ros/launch_ros/descriptions/composable_node.py#L45
   char* fileBuf = read_binary_file(
-        "/lib/firmware/xilinx/image_proc/image_proc.xclbin",
+        "/lib/firmware/xilinx/image_proc_streamlined/image_proc_streamlined.xclbin",
         fileBufSize);
   cl::Program::Binaries bins{{fileBuf, fileBufSize}};
   devices.resize(1);
@@ -259,7 +259,7 @@ RectifyResizeNodeFPGA::RectifyResizeNodeFPGA(const rclcpp::NodeOptions & options
 }
 
 // Handles (un)subscribing when clients (un)subscribe
-void RectifyResizeNodeFPGA::subscribeToCamera()
+void RectifyResizeNodeFPGAStreamlined::subscribeToCamera()
 {
   std::lock_guard<std::mutex> lock(connect_mutex_);
 
@@ -273,13 +273,13 @@ void RectifyResizeNodeFPGA::subscribeToCamera()
   */
   sub_camera_ = image_transport::create_camera_subscription(
     this, "/camera/image_raw", std::bind(
-      &RectifyResizeNodeFPGA::imageCb,
+      &RectifyResizeNodeFPGAStreamlined::imageCb,
       this, std::placeholders::_1, std::placeholders::_2), "raw");
   // }
 }
 
 
-void RectifyResizeNodeFPGA::resizeImageFPGA(
+void RectifyResizeNodeFPGAStreamlined::resizeImageFPGA(
   const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg,
   bool gray)
@@ -403,26 +403,22 @@ void RectifyResizeNodeFPGA::resizeImageFPGA(
 
   queue_->finish();
   pub_image_.publish(*output_image.toImageMsg(), *dst_info_msg);
-
-  std::cout << "Publishing in resize" << std::endl;
-
 }
 
-void RectifyResizeNodeFPGA::imageCb(
+void RectifyResizeNodeFPGAStreamlined::imageCb(
   const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
 
-  std::cout << "RectifyResizeNodeFPGA::imageCb" << std::endl;
   TRACEPOINT(
-    image_proc_rectify_resize_cb_init,
+    image_proc_rectify_cb_init,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
 
   if (pub_image_.getNumSubscribers() < 1) {
     TRACEPOINT(
-      image_proc_rectify_resize_cb_fini,
+      image_proc_rectify_cb_fini,
       static_cast<const void *>(this),
       static_cast<const void *>(&(*image_msg)),
       static_cast<const void *>(&(*info_msg)));
@@ -435,7 +431,7 @@ void RectifyResizeNodeFPGA::imageCb(
       this->get_logger(), "Rectified topic '%s' requested but camera publishing '%s' "
       "is uncalibrated", pub_image_.getTopic().c_str(), sub_camera_.getInfoTopic().c_str());
     TRACEPOINT(
-      image_proc_rectify_resize_cb_fini,
+      image_proc_rectify_cb_fini,
       static_cast<const void *>(this),
       static_cast<const void *>(&(*image_msg)),
       static_cast<const void *>(&(*info_msg)));
@@ -456,7 +452,7 @@ void RectifyResizeNodeFPGA::imageCb(
   if (zero_distortion) {
     pub_image_.publish(*image_msg, *info_msg);
     TRACEPOINT(
-      image_proc_rectify_resize_cb_fini,
+      image_proc_rectify_cb_fini,
       static_cast<const void *>(this),
       static_cast<const void *>(&(*image_msg)),
       static_cast<const void *>(&(*info_msg)));
@@ -473,7 +469,6 @@ void RectifyResizeNodeFPGA::imageCb(
   const cv::Mat image = cv_bridge::toCvShare(image_msg)->image;
   cv::Mat rect, result_hls;
 
-  std::cout << "before rectify" << std::endl;
   // Rectify
   TRACEPOINT(
     image_proc_rectify_init,
@@ -481,31 +476,29 @@ void RectifyResizeNodeFPGA::imageCb(
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
   model_.rectifyImageFPGA(image, rect, gray);  // rectify FPGA computation
+
+  // Resize
+  // TRACEPOINT(
+  //   image_proc_resize_init,
+  //   static_cast<const void *>(this),
+  //   static_cast<const void *>(&(*image_msg)),
+  //   static_cast<const void *>(&(*info_msg)));
+  resizeImageFPGA(image_msg, info_msg, gray);  // resize FPGA computation
+  // TRACEPOINT(
+  //   image_proc_resize_fini,
+  //   static_cast<const void *>(this),
+  //   static_cast<const void *>(&(*image_msg)),
+  //   static_cast<const void *>(&(*info_msg)));
+
   TRACEPOINT(
     image_proc_rectify_fini,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
 
-    std::cout << "before resize" << std::endl;
-
-  // Resize
-  TRACEPOINT(
-    image_proc_resize_init,
-    static_cast<const void *>(this),
-    static_cast<const void *>(&(*image_msg)),
-    static_cast<const void *>(&(*info_msg)));
-  resizeImageFPGA(image_msg, info_msg, gray);  // resize FPGA computation
-  TRACEPOINT(
-    image_proc_resize_fini,
-    static_cast<const void *>(this),
-    static_cast<const void *>(&(*image_msg)),
-    static_cast<const void *>(&(*info_msg)));
-
-
   // Wrap it
   TRACEPOINT(
-    image_proc_rectify_resize_cb_fini,
+    image_proc_rectify_cb_fini,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
@@ -518,4 +511,4 @@ void RectifyResizeNodeFPGA::imageCb(
 // Register the component with class_loader.
 // This acts as a sort of entry point, allowing the component to be discoverable when its library
 // is being loaded into a running process.
-RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::RectifyResizeNodeFPGA)
+RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::RectifyResizeNodeFPGAStreamlined)

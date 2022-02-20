@@ -32,7 +32,7 @@
 #include <vector>
 #include <chrono>
 
-#include "image_proc/rectify_fpga_streamlined.hpp"
+#include "image_proc/rectify_fpga_streamlined_xrt.hpp"
 #include "tracetools_image_pipeline/tracetools.h"
 
 namespace image_geometry
@@ -41,7 +41,7 @@ namespace image_geometry
 // From pinhole_camera_model.cpp
 enum DistortionState { NONE, CALIBRATED, UNKNOWN };
 
-struct PinholeCameraModelFPGAStreamlined::Cache
+struct PinholeCameraModelFPGAStreamlinedXRT::Cache
 {
   DistortionState distortion_state;
 
@@ -64,31 +64,20 @@ struct PinholeCameraModelFPGAStreamlined::Cache
   }
 };
 
-PinholeCameraModelFPGAStreamlined::PinholeCameraModelFPGAStreamlined()
+PinholeCameraModelFPGAStreamlinedXRT::PinholeCameraModelFPGAStreamlinedXRT()
 {
-  // Load the acceleration kernel
-  // NOTE: hardcoded path according to dfx-mgrd conventions
-  cl_int err;
-  unsigned fileBufSize;
-
-  std::vector<cl::Device> devices = get_xilinx_devices();  // Get the device:
-  cl::Device device = devices[0];
-  OCL_CHECK(err, context_ = new cl::Context(device, NULL, NULL, NULL, &err));
-  OCL_CHECK(err, queue_ = new cl::CommandQueue(*context_, device, CL_QUEUE_PROFILING_ENABLE, &err));
-  OCL_CHECK(err, std::string device_name = device.getInfo<CL_DEVICE_NAME>(&err));
-  std::cout << "INFO: Device found - " << device_name << std::endl;
+  // XRT approach
+  // create kernel
+  device = xrt::device(0);  // Open the device, default to 0
   // TODO: generalize this using launch extra_args for composable Nodes
   // see https://github.com/ros2/launch_ros/blob/master/launch_ros/launch_ros/descriptions/composable_node.py#L45
   //
   // use "extra_arguments" from ComposableNode and propagate the value to this class constructor
-  char* fileBuf = read_binary_file("/lib/firmware/xilinx/image_proc_streamlined/image_proc_streamlined.xclbin", fileBufSize);
-  cl::Program::Binaries bins{{fileBuf, fileBufSize}};
-  devices.resize(1);
-  OCL_CHECK(err, cl::Program program(*context_, devices, bins, NULL, &err));
-  OCL_CHECK(err, krnl_ = new cl::Kernel(program, "resize_accel_streamlined", &err));
+  uuid = device.load_xclbin("/lib/firmware/xilinx/image_proc_streamlined/image_proc_streamlined.xclbin");
+  krnl_rectify = xrt::kernel(device, uuid, "rectify_accel_streamlined");
 }
 
-void PinholeCameraModelFPGAStreamlined::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray) const
+void PinholeCameraModelFPGAStreamlinedXRT::rectifyImageFPGA(const cv::Mat& raw, cv::Mat& rectified, bool gray) const
 {
   assert( initialized() );
 
@@ -116,72 +105,68 @@ void PinholeCameraModelFPGAStreamlined::rectifyImageFPGA(const cv::Mat& raw, cv:
         }
 
         //  REVIEW: Vitis Vision Library reviewed does not seem to offer
-        //  capabilities to differentiate between CV_32F and CV_64F. It'd be nice
-        //  to consult with the appropriate team specialized on this.
+        //  capabilities to differentiate between CV_32F and CV_64F. It'd be
+        //  nice to consult with the appropriate team specialized on this.
         //
         int channels = gray ? 1 : 3;
-        size_t image_in_size_bytes = raw.rows * raw.cols * sizeof(unsigned char) * channels;
-        size_t map_in_size_bytes = raw.rows * raw.cols * sizeof(float);
-        size_t image_out_size_bytes = image_in_size_bytes;
+        size_t image_in_size_count = raw.rows * raw.cols * channels;
+        size_t image_in_size_bytes = image_in_size_count * sizeof(unsigned char);
+        // size_t image_in_size_bytes = raw.rows * raw.cols
+        //                               * sizeof(unsigned char)
+        //                               * channels;
+
+        size_t map_in_size_count = raw.rows * raw.cols;
+        size_t map_in_size_bytes = map_in_size_count * sizeof(float);
+        // size_t map_in_size_bytes = raw.rows * raw.cols * sizeof(float);
+        // size_t image_out_size_bytes = image_in_size_bytes;
         cl_int err;
 
-        // Allocate the buffers:
-        OCL_CHECK(err, cl::Buffer buffer_inImage(*context_, CL_MEM_READ_ONLY, image_in_size_bytes, NULL, &err));
-        OCL_CHECK(err, cl::Buffer buffer_inMapX(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
-        OCL_CHECK(err, cl::Buffer buffer_inMapY(*context_, CL_MEM_READ_ONLY, map_in_size_bytes, NULL, &err));
-        // OCL_CHECK(err, cl::Buffer buffer_outImage(*context_, CL_MEM_WRITE_ONLY, image_out_size_bytes, NULL, &err));
+        // Allocate the buffers in global memory
+        auto buffer_inImage = xrt::bo(device,
+                                      image_in_size_bytes,
+                                      krnl_rectify.group_id(0));
+        auto buffer_inMapX = xrt::bo(device,
+                                     map_in_size_bytes,
+                                     krnl_rectify.group_id(1));
+        auto buffer_inMapY = xrt::bo(device,
+                                     map_in_size_bytes,
+                                     krnl_rectify.group_id(2));
+        // auto buffer_outImage = xrt::bo(device,
+        //                              image_out_size_bytes,
+        //                              krnl_rectify.group_id(3));
 
-        // Set kernel arguments:
-        int rows = raw.rows;
-        int cols = raw.cols;
-        OCL_CHECK(err, err = krnl_->setArg(0, buffer_inImage));
-        OCL_CHECK(err, err = krnl_->setArg(1, buffer_inMapX));
-        OCL_CHECK(err, err = krnl_->setArg(2, buffer_inMapY));        
-        // OCL_CHECK(err, err = krnl_->setArg(3, buffer_outImage));
-        OCL_CHECK(err, err = krnl_->setArg(4, rows));
-        OCL_CHECK(err, err = krnl_->setArg(5, cols));
+        // Map the contents of the buffer object into host memory
+        auto buffer_inImage_map = buffer_inImage.map<unsigned char*>();
+        auto buffer_inMapX_map = buffer_inMapX.map<float*>();
+        auto buffer_inMapY_map = buffer_inMapY.map<float*>();
+        // auto buffer_outImage_map = buffer_outImage.map<int*>();
 
-        // Initialize the buffers:
-        cl::Event event;
+        // Copy data
+        // std::fill(buffer_inImage_map, buffer_inImage_map + image_in_size_count, 0);  // NOLINT
+        // std::fill(buffer_inMapX_map, buffer_inMapX_map + map_in_size_count, 0);  // NOLINT
+        // std::fill(buffer_inMapY_map, buffer_inMapY_map + map_in_size_count, 0);  // NOLINT
+        // std::fill(buffer_outImage_map, buffer_outImage_map + image_out_size_count, 0);  // NOLINT
+        std::memcpy(buffer_inImage_map, raw.data, image_in_size_bytes);  // NOLINT
+        std::memcpy(buffer_inMapX_map, map_x.data, map_in_size_bytes);  // NOLINT
+        std::memcpy(buffer_inMapY_map, map_y.data, map_in_size_bytes);  // NOLINT        
 
-        OCL_CHECK(err,
-                  queue_->enqueueWriteBuffer(buffer_inImage,    // buffer on the FPGA
-                                           CL_TRUE,             // blocking call
-                                           0,                   // buffer offset in bytes
-                                           image_in_size_bytes, // Size in bytes
-                                           raw.data,            // Pointer to the data to copy
-                                           nullptr, &event));
+        // Synchronize buffers with device side
+        buffer_inImage.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        buffer_inMapX.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        buffer_inMapY.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        // buffer_outImage.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-        OCL_CHECK(err,
-                  queue_->enqueueWriteBuffer(buffer_inMapX,   // buffer on the FPGA
-                                           CL_TRUE,           // blocking call
-                                           0,                 // buffer offset in bytes
-                                           map_in_size_bytes, // Size in bytes
-                                           map_x.data,        // Pointer to the data to copy
-                                           nullptr, &event));
+        // Set kernel arguments, run and wait for it to finish
+        auto run = xrt::run(krnl_rectify);
+        run.set_arg(0, buffer_inImage);
+        run.set_arg(1, buffer_inMapX);
+        run.set_arg(2, buffer_inMapY);
+        // run.set_arg(3, buffer_outImage);
+        run.set_arg(4, raw.rows);
+        run.set_arg(5, raw.cols);
+        run.start();
 
-        OCL_CHECK(err,
-                  queue_->enqueueWriteBuffer(buffer_inMapY,   // buffer on the FPGA
-                                           CL_TRUE,           // blocking call
-                                           0,                 // buffer offset in bytes
-                                           map_in_size_bytes, // Size in bytes
-                                           map_y.data,        // Pointer to the data to copy
-                                           nullptr, &event));
-
-        // Execute the kernel:
-        OCL_CHECK(err, err = queue_->enqueueTask(*krnl_));
-
-        // // Copy Result from Device Global Memory to Host Local Memory
-        // queue_->enqueueReadBuffer(buffer_outImage,    // This buffers data will be read
-        //                         CL_TRUE,              // blocking call
-        //                         0,                    // offset
-        //                         image_out_size_bytes,
-        //                         hls_remapped.data,    // Data will be stored here
-        //                         nullptr, &event);
-
-        // Clean up:
-        queue_->finish();
-        // rectified = hls_remapped;
+        run.wait();
         break;
       }
     default:
@@ -195,8 +180,8 @@ void PinholeCameraModelFPGAStreamlined::rectifyImageFPGA(const cv::Mat& raw, cv:
 namespace image_proc
 {
 
-RectifyNodeFPGAStreamlined::RectifyNodeFPGAStreamlined(const rclcpp::NodeOptions & options)
-: Node("RectifyNodeFPGAStreamlined", options)
+RectifyNodeFPGAStreamlinedXRT::RectifyNodeFPGAStreamlinedXRT(const rclcpp::NodeOptions & options)
+: Node("RectifyNodeFPGAStreamlinedXRT", options)
 {
   queue_size_ = this->declare_parameter("queue_size", 5);
   interpolation = this->declare_parameter("interpolation", 1);
@@ -205,7 +190,7 @@ RectifyNodeFPGAStreamlined::RectifyNodeFPGAStreamlined(const rclcpp::NodeOptions
 }
 
 // Handles (un)subscribing when clients (un)subscribe
-void RectifyNodeFPGAStreamlined::subscribeToCamera()
+void RectifyNodeFPGAStreamlinedXRT::subscribeToCamera()
 {
   std::lock_guard<std::mutex> lock(connect_mutex_);
 
@@ -219,17 +204,17 @@ void RectifyNodeFPGAStreamlined::subscribeToCamera()
   */
   sub_camera_ = image_transport::create_camera_subscription(
     this, "image", std::bind(
-      &RectifyNodeFPGAStreamlined::imageCb,
+      &RectifyNodeFPGAStreamlinedXRT::imageCb,
       this, std::placeholders::_1, std::placeholders::_2), "raw");
   // }
 }
 
-void RectifyNodeFPGAStreamlined::imageCb(
+void RectifyNodeFPGAStreamlinedXRT::imageCb(
   const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
 
-  std::cout << "RectifyNodeFPGAStreamlined::imageCb" << std::endl;
+  std::cout << "RectifyNodeFPGAStreamlinedXRT::imageCb XRT" << std::endl;
   TRACEPOINT(
     image_proc_rectify_cb_init,
     static_cast<const void *>(this),
@@ -321,4 +306,4 @@ void RectifyNodeFPGAStreamlined::imageCb(
 // Register the component with class_loader.
 // This acts as a sort of entry point, allowing the component to be discoverable when its library
 // is being loaded into a running process.
-RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::RectifyNodeFPGAStreamlined)
+RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::RectifyNodeFPGAStreamlinedXRT)

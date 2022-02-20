@@ -33,7 +33,7 @@
 #include <vitis_common/common/utilities.hpp>
 
 #include "image_proc/xf_resize_config.h"
-#include "image_proc/resize_fpga_streamlined.hpp"
+#include "image_proc/resize_fpga_streamlined_xrt.hpp"
 #include "tracetools_image_pipeline/tracetools.h"
 
 
@@ -44,8 +44,8 @@ char* read_binary_file(const std::string &xclbin_file_name, unsigned &nb);
 namespace image_proc
 {
 
-ResizeNodeFPGAStreamlined::ResizeNodeFPGAStreamlined(const rclcpp::NodeOptions & options)
-: rclcpp::Node("ResizeNodeFPGAStreamlined", options)
+ResizeNodeFPGAStreamlinedXRT::ResizeNodeFPGAStreamlinedXRT(const rclcpp::NodeOptions & options)
+: rclcpp::Node("ResizeNodeFPGAStreamlinedXRT", options)
 {
   // Create image pub
   pub_image_ = image_transport::create_camera_publisher(this, "resize");
@@ -54,7 +54,7 @@ ResizeNodeFPGAStreamlined::ResizeNodeFPGAStreamlined(const rclcpp::NodeOptions &
   sub_image_ = image_transport::create_camera_subscription(
     this, "image",
     std::bind(
-      &ResizeNodeFPGAStreamlined::imageCb, this,
+      &ResizeNodeFPGAStreamlinedXRT::imageCb, this,
       std::placeholders::_1,
       std::placeholders::_2), "raw");
 
@@ -66,43 +66,20 @@ ResizeNodeFPGAStreamlined::ResizeNodeFPGAStreamlined(const rclcpp::NodeOptions &
   width_ = this->declare_parameter("width", -1);
   profile_ = this->declare_parameter("profile", true);
 
-  cl_int err;
-  unsigned fileBufSize;
-
-  // Get the device:
-  std::vector<cl::Device> devices = get_xilinx_devices();
-  // devices.resize(1);  // done below
-  cl::Device device = devices[0];
-
-  // Context, command queue and device name:
-  OCL_CHECK(err, context_ = new cl::Context(device, NULL, NULL, NULL, &err));
-  OCL_CHECK(err, queue_ = new cl::CommandQueue(*context_, device,
-                                    CL_QUEUE_PROFILING_ENABLE, &err));
-  OCL_CHECK(err, std::string device_name =
-                                  device.getInfo<CL_DEVICE_NAME>(&err));
-
-  std::cout << "INFO: Device found - " << device_name << std::endl;
-
-  // Load binary:
-  // NOTE: hardcoded path according to dfx-mgrd conventions
+  device = xrt::device(0);  // Open the device, default to 0
   // TODO: generalize this using launch extra_args for composable Nodes
   // see https://github.com/ros2/launch_ros/blob/master/launch_ros/launch_ros/descriptions/composable_node.py#L45
-  char* fileBuf = read_binary_file(
-        "/lib/firmware/xilinx/image_proc_streamlined/image_proc_streamlined.xclbin",
-        fileBufSize);
-  cl::Program::Binaries bins{{fileBuf, fileBufSize}};
-  devices.resize(1);
-  OCL_CHECK(err, cl::Program program(*context_, devices, bins, NULL, &err));
-
-  // Create a kernel:
-  OCL_CHECK(err, krnl_ = new cl::Kernel(program, "resize_accel_streamlined", &err));
+  //
+  // use "extra_arguments" from ComposableNode and propagate the value to this class constructor
+  uuid = device.load_xclbin("/lib/firmware/xilinx/image_proc_streamlined/image_proc_streamlined.xclbin");
+  krnl_resize = xrt::kernel(device, uuid, "resize_accel_streamlined");
 }
 
-void ResizeNodeFPGAStreamlined::imageCb(
+void ResizeNodeFPGAStreamlinedXRT::imageCb(
   sensor_msgs::msg::Image::ConstSharedPtr image_msg,
   sensor_msgs::msg::CameraInfo::ConstSharedPtr info_msg)
 {
-  std::cout << "ResizeNodeFPGAStreamlined::imageCb" << std::endl;
+  std::cout << "ResizeNodeFPGAStreamlinedXRT::imageCb XRT" << std::endl;
   TRACEPOINT(
     image_proc_resize_cb_init,
     static_cast<const void *>(this),
@@ -132,17 +109,12 @@ void ResizeNodeFPGAStreamlined::imageCb(
     cv_ptr = cv_bridge::toCvCopy(image_msg);
   } catch (cv_bridge::Exception & e) {
     RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
-    TRACEPOINT(
-      image_proc_resize_cb_fini,
-      static_cast<const void *>(this),
-      static_cast<const void *>(&(*image_msg)),
-      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
   // Prepare output CameraInfo with desired dimensions
   sensor_msgs::msg::CameraInfo::SharedPtr dst_info_msg =
-    std::make_shared<sensor_msgs::msg::CameraInfo>(*info_msg);
+  std::make_shared<sensor_msgs::msg::CameraInfo>(*info_msg);
 
   double scale_y;
   double scale_x;
@@ -171,68 +143,50 @@ void ResizeNodeFPGAStreamlined::imageCb(
   dst_info_msg->p[5] = dst_info_msg->p[5] * scale_y;  // fy
   dst_info_msg->p[6] = dst_info_msg->p[6] * scale_y;  // cy
 
-  TRACEPOINT(
-    image_proc_resize_init,
-    static_cast<const void *>(this),
-    static_cast<const void *>(&(*image_msg)),
-    static_cast<const void *>(&(*info_msg)));
-  // OpenCL section:
-  cl_int err;
-  size_t image_in_size_bytes, image_out_size_bytes;
+  size_t image_out_size_count, image_out_size_bytes;
 
   if (gray) {
     result_hls.create(cv::Size(dst_info_msg->width,
                                 dst_info_msg->height), CV_8UC1);
-    image_in_size_bytes = info_msg->height * info_msg->width *
-                                  1 * sizeof(unsigned char);
-    image_out_size_bytes = dst_info_msg->height * dst_info_msg->width *
-                                  1 * sizeof(unsigned char);
+    image_out_size_count = dst_info_msg->height * dst_info_msg->width * 1;
+    image_out_size_bytes = image_out_size_count * sizeof(unsigned char);
+    // image_out_size_bytes = dst_info_msg->height * dst_info_msg->width *
+    //                               1 * sizeof(unsigned char);
   } else {
     result_hls.create(cv::Size(dst_info_msg->width,
                                 dst_info_msg->height), CV_8UC3);
-    image_in_size_bytes = info_msg->height * info_msg->width *
-                                  3 * sizeof(unsigned char);
-    image_out_size_bytes = dst_info_msg->height * dst_info_msg->width *
-                                  3 * sizeof(unsigned char);
+    image_out_size_count = dst_info_msg->height * dst_info_msg->width * 3;
+    image_out_size_bytes = image_out_size_count * sizeof(unsigned char);
+    // image_out_size_bytes = dst_info_msg->height * dst_info_msg->width *
+    //                               3 * sizeof(unsigned char);
   }
 
-  // Allocate the buffers:
-  // OCL_CHECK(err, cl::Buffer imageToDevice(*context_, CL_MEM_READ_ONLY,
-  //                                         image_in_size_bytes, NULL, &err));
-  OCL_CHECK(err, cl::Buffer imageFromDevice(*context_, CL_MEM_WRITE_ONLY,
-                                            image_out_size_bytes, NULL, &err));
+  // Allocate the buffers in global memory
+  auto imageFromDevice = xrt::bo(device,
+                                image_out_size_bytes,
+                                krnl_resize.group_id(1));
 
-  // Set the kernel arguments
-  // OCL_CHECK(err, err = krnl_->setArg(0, imageToDevice));
-  OCL_CHECK(err, err = krnl_->setArg(1, imageFromDevice));
-  OCL_CHECK(err, err = krnl_->setArg(2, info_msg->height));
-  OCL_CHECK(err, err = krnl_->setArg(3, info_msg->width));
-  OCL_CHECK(err, err = krnl_->setArg(4, dst_info_msg->height));
-  OCL_CHECK(err, err = krnl_->setArg(5, dst_info_msg->width));
+  // Map the contents of the buffer object into host memory
+  auto imageFromDevice_map = imageFromDevice.map<uchar*>();
+  std::fill(imageFromDevice_map, imageFromDevice_map + image_out_size_count, 0);  // NOLINT
 
-  // /* Copy input vectors to memory */
-  // OCL_CHECK(err,
-  //   queue_->enqueueWriteBuffer(imageToDevice,     // buffer on the FPGA
-  //                        CL_TRUE,                 // blocking call
-  //                        0,                       // buffer offset in bytes
-  //                        image_in_size_bytes,     // Size in bytes
-  //                        cv_ptr->image.data));    // Pointer to the data to copy
+  // // Synchronize buffers with device side
+  // imageFromDevice.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  cl::Event event_sp;
-
-  // Execute the kernel:
-  OCL_CHECK(err, err = queue_->enqueueTask(*krnl_, NULL, &event_sp));
-
-  // Copying Device result data to Host memory
-  OCL_CHECK(err,
-      queue_->enqueueReadBuffer(
-                          imageFromDevice,   // This buffers data will be read
-                          CL_TRUE,           // blocking call
-                          0,                 // offset
-                          image_out_size_bytes,
-                          result_hls.data));  // data will be stored here
-  queue_->finish();
-
+  // Set kernel arguments, run and wait for it to finish
+  auto run_resize = xrt::run(krnl_resize);
+  run_resize.set_arg(1, imageFromDevice);
+  run_resize.set_arg(2, info_msg->height);
+  run_resize.set_arg(3, info_msg->width);
+  run_resize.set_arg(4, dst_info_msg->height);
+  run_resize.set_arg(5, dst_info_msg->width);
+  run_resize.start();
+  
+  run_resize.wait();
+  
+  // Get the output;
+  imageFromDevice.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  result_hls.data = imageFromDevice_map;
 
   // Set the output image
   cv_bridge::CvImage output_image;
@@ -270,7 +224,6 @@ void ResizeNodeFPGAStreamlined::imageCb(
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
-
 }
 
 }  // namespace image_proc
@@ -281,4 +234,4 @@ void ResizeNodeFPGAStreamlined::imageCb(
 // This acts as a sort of entry point, allowing the component
 // to be discoverable when its library
 // is being loaded into a running process.
-RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::ResizeNodeFPGAStreamlined)
+RCLCPP_COMPONENTS_REGISTER_NODE(image_proc::ResizeNodeFPGAStreamlinedXRT)
