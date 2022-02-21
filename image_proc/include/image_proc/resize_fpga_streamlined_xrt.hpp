@@ -62,10 +62,6 @@ protected:
   int height_;
   int width_;
 
-  // cl::Kernel* krnl_;
-  // cl::Context* context_;
-  // cl::CommandQueue* queue_;
-
   xrt::device device;
   xrt::uuid uuid;
   xrt::kernel krnl_resize;

@@ -406,15 +406,14 @@ void RectifyResizeNodeFPGAStreamlinedXRT::imageCb(
   
   // Get the output;
   imageFromDevice.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  
+  result_hls.data = imageFromDevice_map;
+  // cv::imwrite("/output.jpg", result_hls);
+
   TRACEPOINT(
     image_proc_rectify_fini,
     static_cast<const void *>(this),
     static_cast<const void *>(&(*image_msg)),
     static_cast<const void *>(&(*info_msg)));
-
-  result_hls.data = imageFromDevice_map;
-  // cv::imwrite("/output.jpg", result_hls);
 
   // Set the output image
   cv_bridge::CvImage output_image;

@@ -214,7 +214,7 @@ void RectifyNodeFPGAStreamlinedXRT::imageCb(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
 
-  std::cout << "RectifyNodeFPGAStreamlinedXRT::imageCb XRT" << std::endl;
+  // std::cout << "RectifyNodeFPGAStreamlinedXRT::imageCb XRT" << std::endl;
   TRACEPOINT(
     image_proc_rectify_cb_init,
     static_cast<const void *>(this),

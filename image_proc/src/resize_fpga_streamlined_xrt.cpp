@@ -36,11 +36,6 @@
 #include "image_proc/resize_fpga_streamlined_xrt.hpp"
 #include "tracetools_image_pipeline/tracetools.h"
 
-
-// Forward declaration of utility functions included at the end of this file
-std::vector<cl::Device> get_xilinx_devices();
-char* read_binary_file(const std::string &xclbin_file_name, unsigned &nb);
-
 namespace image_proc
 {
 
@@ -79,7 +74,7 @@ void ResizeNodeFPGAStreamlinedXRT::imageCb(
   sensor_msgs::msg::Image::ConstSharedPtr image_msg,
   sensor_msgs::msg::CameraInfo::ConstSharedPtr info_msg)
 {
-  std::cout << "ResizeNodeFPGAStreamlinedXRT::imageCb XRT" << std::endl;
+  // std::cout << "ResizeNodeFPGAStreamlinedXRT::imageCb XRT" << std::endl;
   TRACEPOINT(
     image_proc_resize_cb_init,
     static_cast<const void *>(this),
@@ -143,8 +138,14 @@ void ResizeNodeFPGAStreamlinedXRT::imageCb(
   dst_info_msg->p[5] = dst_info_msg->p[5] * scale_y;  // fy
   dst_info_msg->p[6] = dst_info_msg->p[6] * scale_y;  // cy
 
-  size_t image_out_size_count, image_out_size_bytes;
 
+  TRACEPOINT(
+    image_proc_resize_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
+
+  size_t image_out_size_count, image_out_size_bytes;
   if (gray) {
     result_hls.create(cv::Size(dst_info_msg->width,
                                 dst_info_msg->height), CV_8UC1);
@@ -186,7 +187,8 @@ void ResizeNodeFPGAStreamlinedXRT::imageCb(
   
   // Get the output;
   imageFromDevice.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  result_hls.data = imageFromDevice_map;
+  std::memcpy(result_hls.data, imageFromDevice_map, image_out_size_bytes);
+  // result_hls.data = imageFromDevice_map;
 
   // Set the output image
   cv_bridge::CvImage output_image;

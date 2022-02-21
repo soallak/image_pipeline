@@ -229,7 +229,7 @@ void RectifyNodeFPGAStreamlined::imageCb(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
 
-  std::cout << "RectifyNodeFPGAStreamlined::imageCb" << std::endl;
+  // std::cout << "RectifyNodeFPGAStreamlined::imageCb" << std::endl;
   TRACEPOINT(
     image_proc_rectify_cb_init,
     static_cast<const void *>(this),

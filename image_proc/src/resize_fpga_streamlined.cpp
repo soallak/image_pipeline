@@ -102,7 +102,7 @@ void ResizeNodeFPGAStreamlined::imageCb(
   sensor_msgs::msg::Image::ConstSharedPtr image_msg,
   sensor_msgs::msg::CameraInfo::ConstSharedPtr info_msg)
 {
-  std::cout << "ResizeNodeFPGAStreamlined::imageCb" << std::endl;
+  // std::cout << "ResizeNodeFPGAStreamlined::imageCb" << std::endl;
   TRACEPOINT(
     image_proc_resize_cb_init,
     static_cast<const void *>(this),
