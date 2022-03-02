@@ -267,27 +267,27 @@ if(ROS_ACCELERATION)
   # Synth
   #####################
 
-  # # resize_accel kernel
-  # vitis_acceleration_kernel(
-  #   NAME resize_accel
-  #   FILE src/image_proc/xf_resize_accel.cpp
-  #   CONFIG cfg/kv260.cfg
-  #   INCLUDE
-  #     include/image_proc
-  #     ${CMAKE_INSTALL_PREFIX}/include
-  #   TYPE hw
-  # )
+  # resize_accel kernel
+  vitis_acceleration_kernel(
+    NAME resize_accel
+    FILE src/image_proc/xf_resize_accel.cpp
+    CONFIG cfg/kv260.cfg
+    INCLUDE
+      include/image_proc
+      ${CMAKE_INSTALL_PREFIX}/include
+    TYPE hw
+  )
 
-  # # rectify_accel kernel
-  # vitis_acceleration_kernel(
-  #   NAME rectify_accel
-  #   FILE src/image_proc/xf_rectify_accel.cpp
-  #   CONFIG cfg/kv260.cfg
-  #   INCLUDE
-  #     include/image_proc
-  #     ${CMAKE_INSTALL_PREFIX}/include
-  #   TYPE hw
-  # )
+  # rectify_accel kernel
+  vitis_acceleration_kernel(
+    NAME rectify_accel
+    FILE src/image_proc/xf_rectify_accel.cpp
+    CONFIG cfg/kv260.cfg
+    INCLUDE
+      include/image_proc
+      ${CMAKE_INSTALL_PREFIX}/include
+    TYPE hw
+  )
 
   # rectify_accel_streamlined kernel
   vitis_acceleration_kernel(
@@ -311,27 +311,26 @@ if(ROS_ACCELERATION)
     TYPE hw
   )
 
-  # # rectify_resize_accel kernel
-  # vitis_acceleration_kernel(
-  #   NAME rectify_resize_accel
-  #   FILE src/image_proc/xf_rectify_resize_accel.cpp
-  #   CONFIG cfg/kv260_image_proc_integrated.cfg
-  #   INCLUDE
-  #     include/image_proc
-  #     ${CMAKE_INSTALL_PREFIX}/include
-  #   TYPE hw 
-  # )  
+  # rectify_resize_accel kernel
+  vitis_acceleration_kernel(
+    NAME rectify_resize_accel
+    FILE src/image_proc/xf_rectify_resize_accel.cpp
+    CONFIG cfg/kv260_image_proc_integrated.cfg
+    INCLUDE
+      include/image_proc
+      ${CMAKE_INSTALL_PREFIX}/include
+    TYPE hw 
+  )  
 
   #####################
   # Place and route
   #####################
-
-  # # image_proc kernel
-  # vitis_link_kernel(
-  #   OUTPUT image_proc
-  #   KERNELS resize_accel rectify_accel
-  #   CONFIG cfg/kv260_image_proc.cfg
-  # )
+  # image_proc kernel
+  vitis_link_kernel(
+    OUTPUT image_proc
+    KERNELS resize_accel rectify_accel
+    CONFIG cfg/kv260_image_proc.cfg
+  )
 
   # image_proc_streamlined kernel
   vitis_link_kernel(
@@ -340,12 +339,12 @@ if(ROS_ACCELERATION)
     CONFIG cfg/kv260_image_proc_streamlined.cfg 
   )
 
-  # # image_proc_integrated kernel
-  # vitis_link_kernel(
-  #   OUTPUT image_proc_integrated  
-  #   KERNELS rectify_resize_accel
-  #   CONFIG cfg/kv260_image_proc_integrated.cfg
-  # )
+  # image_proc_integrated kernel
+  vitis_link_kernel(
+    OUTPUT image_proc_integrated  
+    KERNELS rectify_resize_accel
+    CONFIG cfg/kv260_image_proc_integrated.cfg
+  )
 
 endif()
 
