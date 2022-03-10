@@ -32,10 +32,6 @@
 #include <vector>
 #include <string>
 
-#include "experimental/xrt_bo.h"
-#include "experimental/xrt_device.h"
-#include "experimental/xrt_kernel.h"
-
 #include <vitis_common/common/ros_opencl_120.hpp>
 
 
@@ -67,10 +63,6 @@ private:
   cl::Kernel* krnl_;
   cl::Context* context_;
   cl::CommandQueue* queue_;
-
-  xrt::device device;
-  xrt::uuid uuid;
-  xrt::kernel krnl_rectify;
 };
 
 } //namespace image_geometry

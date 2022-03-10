@@ -18,8 +18,9 @@
   <author>Jeremy Leibs</author>
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>ament_vitis</buildtool_depend>
+  <buildtool_depend>ament_cuda</buildtool_depend>
 
-  <build_depend>vitis_common</build_depend>
   <depend>cv_bridge</depend>
   <depend>image_geometry</depend>
   <depend>image_transport</depend>

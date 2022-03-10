@@ -33,10 +33,6 @@
 #include <vector>
 #include <thread>
 
-// #include "experimental/xrt_bo.h"
-// #include "experimental/xrt_device.h"
-// #include "experimental/xrt_kernel.h"
-
 #include <vitis_common/common/ros_opencl_120.hpp>
 
 namespace image_proc
