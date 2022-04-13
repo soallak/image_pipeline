@@ -122,7 +122,7 @@ void PinholeCameraModelFPGAStreamlined::rectifyImageFPGA(const cv::Mat& raw, cv:
         int channels = gray ? 1 : 3;
         size_t image_in_size_bytes = raw.rows * raw.cols * sizeof(unsigned char) * channels;
         size_t map_in_size_bytes = raw.rows * raw.cols * sizeof(float);
-        size_t image_out_size_bytes = image_in_size_bytes;
+        // size_t image_out_size_bytes = image_in_size_bytes;
         cl_int err;
 
         // Allocate the buffers:

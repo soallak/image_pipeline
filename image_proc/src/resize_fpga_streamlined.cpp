@@ -37,9 +37,9 @@
 #include "tracetools_image_pipeline/tracetools.h"
 
 
-// Forward declaration of utility functions included at the end of this file
-std::vector<cl::Device> get_xilinx_devices();
-char* read_binary_file(const std::string &xclbin_file_name, unsigned &nb);
+// // Forward declaration of utility functions included at the end of this file
+// std::vector<cl::Device> get_xilinx_devices();
+// char* read_binary_file(const std::string &xclbin_file_name, unsigned &nb);
 
 namespace image_proc
 {

@@ -157,6 +157,7 @@ if (DEFINED ROS_VITIS)
     $ENV{XILINX_HLS}/include
   )
   target_link_libraries(rectify_resize_fpga_streamlined ${OpenCL_LIBRARY})
+  ament_target_dependencies(rectify_resize_fpga_streamlined vitis_common)
   target_compile_definitions(rectify_resize_fpga_streamlined PRIVATE "COMPOSITION_BUILDING_DLL")
   rclcpp_components_register_nodes(rectify_resize_fpga_streamlined "image_proc::RectifyResizeNodeFPGAStreamlined")
   set(node_plugins "${node_plugins}image_proc::RectifyResizeNodeFPGAStreamlined;$<TARGET_FILE:rectify_resize_fpga_streamlined>\n")

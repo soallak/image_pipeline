@@ -59,6 +59,70 @@ extern "C"
  */
 TRACETOOLS_PUBLIC bool ros_trace_compile_status();
 
+/// `image_proc_harris_cb_init`
+/**
+ * Tracepoint while initiating the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] harris_node rclcpp::node::Node subject to the callback
+ * \param[in] harris_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] harris_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_harris_cb_init,
+  const void * harris_node,
+  const void * harris_image_msg,
+  const void * harris_info_msg)
+
+/// `image_proc_harris_cb_fini`
+/**
+ * Tracepoint while finishing the callback of image_proc::ResizeNode component
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] harris_node rclcpp::node::Node subject to the callback
+ * \param[in] harris_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] harris_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_harris_cb_fini,
+  const void * harris_node,
+  const void * harris_image_msg,
+  const void * harris_info_msg)
+
+/// `image_proc_harris_init`
+/**
+ * Tracepoint while initiating the resize operation
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] harris_node rclcpp::node::Node subject to the callback
+ * \param[in] harris_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] harris_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_harris_init,
+  const void * harris_node,
+  const void * harris_image_msg,
+  const void * harris_info_msg)
+
+/// `image_proc_harris_fini`
+/**
+ * Tracepoint while finishing the resize operation
+ *
+ * Notes the `tracetools_image_pipeline` version automatically.
+ *
+ * \param[in] harris_node rclcpp::node::Node subject to the callback
+ * \param[in] harris_image_msg image ROS message stored as sensor_msgs::msg::Image::ConstSharedPtr
+ * \param[in] harris_info_msg info ROS message as sensor_msgs::msg::CameraInfo::ConstSharedPtr
+ */
+DECLARE_TRACEPOINT(
+  image_proc_harris_fini,
+  const void * harris_node,
+  const void * harris_image_msg,
+  const void * harris_info_msg)
+
 /// `image_proc_resize_cb_init`
 /**
  * Tracepoint while initiating the callback of image_proc::ResizeNode component

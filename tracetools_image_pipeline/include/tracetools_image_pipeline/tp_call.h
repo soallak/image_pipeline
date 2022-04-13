@@ -160,6 +160,69 @@ TRACEPOINT_EVENT(
   )
 )
 
+// image_proc harris init callback
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,       // tracepoint provider name
+  image_proc_harris_cb_init,    // tracepoint name
+  TP_ARGS(
+    // input arguments, see https://lttng.org/docs/v2.12/#doc-tpp-def-input-args
+    const void *, harris_node_arg,
+    const void *, harris_image_msg_arg,
+    const void *, harris_info_msg_arg),
+  TP_FIELDS(
+    // output event fields, see https://lttng.org/man/3/lttng-ust/v2.12/#doc-ctf-macros
+    ctf_integer_hex(const void *, harris_node, harris_node_arg)
+    ctf_integer_hex(const void *, harris_image_msg, harris_image_msg_arg)
+    ctf_integer_hex(const void *, harris_info_msg, harris_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc harris end of callback (after publication)
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,
+  image_proc_harris_cb_fini,
+  TP_ARGS(
+    const void *, harris_node_arg,
+    const void *, harris_image_msg_arg,
+    const void *, harris_info_msg_arg),
+  TP_FIELDS(
+    ctf_integer_hex(const void *, harris_node, harris_node_arg)
+    ctf_integer_hex(const void *, harris_image_msg, harris_image_msg_arg)
+    ctf_integer_hex(const void *, harris_info_msg, harris_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc harris init
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,
+  image_proc_harris_init,
+  TP_ARGS(
+    const void *, harris_node_arg,
+    const void *, harris_image_msg_arg,
+    const void *, harris_info_msg_arg),
+  TP_FIELDS(
+    ctf_integer_hex(const void *, harris_node, harris_node_arg)
+    ctf_integer_hex(const void *, harris_image_msg, harris_image_msg_arg)
+    ctf_integer_hex(const void *, harris_info_msg, harris_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+// image_proc harris end of (after having rectified the image)
+TRACEPOINT_EVENT(
+  TRACEPOINT_PROVIDER,
+  image_proc_harris_fini,
+  TP_ARGS(
+    const void *, harris_node_arg,
+    const void *, harris_image_msg_arg,
+    const void *, harris_info_msg_arg),
+  TP_FIELDS(
+    ctf_integer_hex(const void *, harris_node, harris_node_arg)
+    ctf_integer_hex(const void *, harris_image_msg, harris_image_msg_arg)
+    ctf_integer_hex(const void *, harris_info_msg, harris_info_msg_arg)
+    ctf_string(version, tracetools_image_pipeline_VERSION)
+  )
+)
+
 // image_proc rectify and resize init callback
 TRACEPOINT_EVENT(
   TRACEPOINT_PROVIDER,       // tracepoint provider name
