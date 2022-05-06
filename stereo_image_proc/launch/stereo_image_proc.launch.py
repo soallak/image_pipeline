@@ -71,10 +71,14 @@ def generate_launch_description():
                 'full_dp': LaunchConfiguration('full_dp'),
             }],
             remappings=[
-                ('left/image_rect', [LaunchConfiguration('left_namespace'), '/image_rect']),
-                ('left/camera_info', [LaunchConfiguration('left_namespace'), '/camera_info']),
-                ('right/image_rect', [LaunchConfiguration('right_namespace'), '/image_rect']),
-                ('right/camera_info', [LaunchConfiguration('right_namespace'), '/camera_info']),
+                ('left/image_rect',
+                 [LaunchConfiguration('left_namespace'), '/image_rect']),
+                ('left/camera_info',
+                 [LaunchConfiguration('left_namespace'), '/camera_info']),
+                ('right/image_rect',
+                 [LaunchConfiguration('right_namespace'), '/image_rect']),
+                ('right/camera_info',
+                 [LaunchConfiguration('right_namespace'), '/camera_info']),
             ]
         ),
         ComposableNode(
@@ -87,11 +91,14 @@ def generate_launch_description():
                 'use_system_default_qos': LaunchConfiguration('use_system_default_qos'),
             }],
             remappings=[
-                ('left/camera_info', [LaunchConfiguration('left_namespace'), '/camera_info']),
-                ('right/camera_info', [LaunchConfiguration('right_namespace'), '/camera_info']),
+                ('left/camera_info',
+                 [LaunchConfiguration('left_namespace'), '/camera_info']),
+                ('right/camera_info',
+                 [LaunchConfiguration('right_namespace'), '/camera_info']),
                 (
                     'left/image_rect_color',
-                    [LaunchConfiguration('left_namespace'), '/image_rect_color']
+                    [LaunchConfiguration('left_namespace'),
+                     '/image_rect_color']
                 ),
             ]
         ),
@@ -140,7 +147,7 @@ def generate_launch_description():
         # Stereo algorithm parameters
         DeclareLaunchArgument(
             name='stereo_algorithm', default_value='0',
-            description='Stereo algorithm: Block Matching (0) or Semi-Global Block Matching (1)'
+            description='Stereo algorithm: Block Matching (0), Semi-Global Block Matching (1) or HW Accelerated Block Matching (2)'
         ),
         DeclareLaunchArgument(
             name='prefilter_size', default_value='9',
@@ -222,9 +229,11 @@ def generate_launch_description():
                 PushRosNamespace(LaunchConfiguration('left_namespace')),
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource([
-                        FindPackageShare('image_proc'), '/launch/image_proc.launch.py'
+                        FindPackageShare(
+                            'image_proc'), '/launch/image_proc.launch.py'
                     ]),
-                    launch_arguments={'container': LaunchConfiguration('container')}.items()
+                    launch_arguments={
+                        'container': LaunchConfiguration('container')}.items()
                 ),
             ],
             condition=IfCondition(LaunchConfiguration('launch_image_proc')),
@@ -234,9 +243,11 @@ def generate_launch_description():
                 PushRosNamespace(LaunchConfiguration('right_namespace')),
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource([
-                        FindPackageShare('image_proc'), '/launch/image_proc.launch.py'
+                        FindPackageShare(
+                            'image_proc'), '/launch/image_proc.launch.py'
                     ]),
-                    launch_arguments={'container': LaunchConfiguration('container')}.items()
+                    launch_arguments={
+                        'container': LaunchConfiguration('container')}.items()
                 ),
             ],
             condition=IfCondition(LaunchConfiguration('launch_image_proc')),

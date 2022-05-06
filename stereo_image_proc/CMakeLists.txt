@@ -13,27 +13,23 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 find_package(OpenCV REQUIRED)
+find_package(hwcv REQUIRED)
 
 # See note in image_proc/CMakeLists.txt
 # add_definitions(-DOPENCV_TRAITS_ENABLE_DEPRECATED)
 
-ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/${PROJECT_NAME}/stereo_processor.cpp
+ament_auto_add_library(
+  ${PROJECT_NAME} SHARED src/${PROJECT_NAME}/stereo_processor.cpp
   src/${PROJECT_NAME}/disparity_node.cpp
-  src/${PROJECT_NAME}/point_cloud_node.cpp
-)
-target_link_libraries(${PROJECT_NAME}
-  ${OpenCV_LIBRARIES}
-)
+  src/${PROJECT_NAME}/point_cloud_node.cpp)
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBRARIES} hwcv::hwcv)
 
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "stereo_image_proc::DisparityNode"
-  EXECUTABLE disparity_node
-)
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "stereo_image_proc::PointCloudNode"
-  EXECUTABLE point_cloud_node
-)
+rclcpp_components_register_node(
+  ${PROJECT_NAME} PLUGIN "stereo_image_proc::DisparityNode" EXECUTABLE
+  disparity_node)
+rclcpp_components_register_node(
+  ${PROJECT_NAME} PLUGIN "stereo_image_proc::PointCloudNode" EXECUTABLE
+  point_cloud_node)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -45,21 +41,17 @@ if(BUILD_TESTING)
   endif()
 
   # Test DisparityNode in launch test
-  add_launch_test("test/test_disparity_node.py"
-    PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
-  )
+  add_launch_test("test/test_disparity_node.py" PYTHON_EXECUTABLE
+                  "${PYTHON_EXECUTABLE}")
   # TODO(jacobperron): As of Eloquent, they're just plain pytests
   # ament_add_pytest_test("test_disparity_node" test/test_disparity_node.py
-  #   PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
-  # )
+  # PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}" )
 
   # Test PointCloudNode in launch test
-  add_launch_test("test/test_point_cloud_node.py"
-    PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
-  )
+  add_launch_test("test/test_point_cloud_node.py" PYTHON_EXECUTABLE
+                  "${PYTHON_EXECUTABLE}")
   # ament_add_pytest_test("test_point_cloud_node" test/test_point_cloud_node.py
-  #   PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
-  # )
+  # PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}" )
 
   set(PYTHON_EXECUTABLE "${_PYTHON_EXECUTABLE}")
 endif()

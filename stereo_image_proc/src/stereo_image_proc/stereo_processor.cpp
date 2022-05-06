@@ -32,10 +32,10 @@
 #include "stereo_image_proc/stereo_processor.hpp"
 
 #include <rcutils/logging_macros.h>
-#include <sensor_msgs/image_encodings.hpp>
 
 #include <cmath>
 #include <limits>
+#include <sensor_msgs/image_encodings.hpp>
 #include <string>
 
 // TODO(jacobperron): Remove this after it's implemented upstream
@@ -46,16 +46,13 @@
 // Uncomment below instead
 // #include <rcutils/assert.h>
 
-namespace stereo_image_proc
-{
+namespace stereo_image_proc {
 
 bool StereoProcessor::process(
-  const sensor_msgs::msg::Image::ConstSharedPtr & left_raw,
-  const sensor_msgs::msg::Image::ConstSharedPtr & right_raw,
-  const image_geometry::StereoCameraModel & model,
-  StereoImageSet & output,
-  int flags) const
-{
+    const sensor_msgs::msg::Image::ConstSharedPtr &left_raw,
+    const sensor_msgs::msg::Image::ConstSharedPtr &right_raw,
+    const image_geometry::StereoCameraModel &model, StereoImageSet &output,
+    int flags) const {
   // Do monocular processing on left and right images
   int left_flags = flags & LEFT_ALL;
   int right_flags = flags & RIGHT_ALL;
@@ -69,62 +66,68 @@ bool StereoProcessor::process(
     // Need the color channels for the point cloud
     left_flags |= LEFT_RECT_COLOR;
   }
-  if (!mono_processor_.process(left_raw, model.left(), output.left, left_flags)) {
+  if (!mono_processor_.process(left_raw, model.left(), output.left,
+                               left_flags)) {
     return false;
   }
-  if (!mono_processor_.process(right_raw, model.right(), output.right, right_flags >> 4)) {
+  if (!mono_processor_.process(right_raw, model.right(), output.right,
+                               right_flags >> 4)) {
     return false;
   }
 
   // Do block matching to produce the disparity image
   if (flags & DISPARITY) {
-    processDisparity(output.left.rect, output.right.rect, model, output.disparity);
+    processDisparity(output.left.rect, output.right.rect, model,
+                     output.disparity);
   }
 
   // Project disparity image to 3d point cloud
   if (flags & POINT_CLOUD) {
-    processPoints(
-      output.disparity, output.left.rect_color, output.left.color_encoding, model, output.points);
+    processPoints(output.disparity, output.left.rect_color,
+                  output.left.color_encoding, model, output.points);
   }
 
   // Project disparity image to 3d point cloud
   if (flags & POINT_CLOUD2) {
-    processPoints2(
-      output.disparity, output.left.rect_color, output.left.color_encoding, model, output.points2);
+    processPoints2(output.disparity, output.left.rect_color,
+                   output.left.color_encoding, model, output.points2);
   }
 
   return true;
 }
 
 void StereoProcessor::processDisparity(
-  const cv::Mat & left_rect,
-  const cv::Mat & right_rect,
-  const image_geometry::StereoCameraModel & model,
-  stereo_msgs::msg::DisparityImage & disparity) const
-{
-  // Fixed-point disparity is 16 times the true value: d = d_fp / 16.0 = x_l - x_r.
+    const cv::Mat &left_rect, const cv::Mat &right_rect,
+    const image_geometry::StereoCameraModel &model,
+    stereo_msgs::msg::DisparityImage &disparity) const {
+  // Fixed-point disparity is 16 times the true value: d = d_fp / 16.0 = x_l -
+  // x_r.
   static const int DPP = 16;  // disparities per pixel
   static const double inv_dpp = 1.0 / DPP;
 
   // Block matcher produces 16-bit signed (fixed point) disparity image
+  disparity16_.create(left_rect.rows, left_rect.cols);
   if (current_stereo_algorithm_ == BM) {
     block_matcher_->compute(left_rect, right_rect, disparity16_);
-  } else {
+  } else if (current_stereo_algorithm_ == SGBM) {
     sg_block_matcher_->compute(left_rect, right_rect, disparity16_);
+  } else {
+    hwcv_matcher_.Execute(left_rect, right_rect, disparity16_);
   }
 
   // Fill in DisparityImage image data, converting to 32-bit float
-  sensor_msgs::msg::Image & dimage = disparity.image;
+  sensor_msgs::msg::Image &dimage = disparity.image;
   dimage.height = disparity16_.rows;
   dimage.width = disparity16_.cols;
   dimage.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
   dimage.step = dimage.width * sizeof(float);
   dimage.data.resize(dimage.step * dimage.height);
-  cv::Mat_<float> dmat(
-    dimage.height, dimage.width, reinterpret_cast<float *>(&dimage.data[0]), dimage.step);
-  // We convert from fixed-point to float disparity and also adjust for any x-offset between
-  // the principal points: d = d_fp*inv_dpp - (cx_l - cx_r)
-  disparity16_.convertTo(dmat, dmat.type(), inv_dpp, -(model.left().cx() - model.right().cx()));
+  cv::Mat_<float> dmat(dimage.height, dimage.width,
+                       reinterpret_cast<float *>(&dimage.data[0]), dimage.step);
+  // We convert from fixed-point to float disparity and also adjust for any
+  // x-offset between the principal points: d = d_fp*inv_dpp - (cx_l - cx_r)
+  disparity16_.convertTo(dmat, dmat.type(), inv_dpp,
+                         -(model.left().cx() - model.right().cx()));
   RCUTILS_ASSERT(dmat.data == &dimage.data[0]);
   // TODO(unknown): is_bigendian?
 
@@ -140,26 +143,24 @@ void StereoProcessor::processDisparity(
   disparity.delta_d = inv_dpp;
 }
 
-inline bool isValidPoint(const cv::Vec3f & pt)
-{
-  // Check both for disparities explicitly marked as invalid (where OpenCV maps pt.z to MISSING_Z)
-  // and zero disparities (point mapped to infinity).
-  return pt[2] != image_geometry::StereoCameraModel::MISSING_Z && !std::isinf(pt[2]);
+inline bool isValidPoint(const cv::Vec3f &pt) {
+  // Check both for disparities explicitly marked as invalid (where OpenCV maps
+  // pt.z to MISSING_Z) and zero disparities (point mapped to infinity).
+  return pt[2] != image_geometry::StereoCameraModel::MISSING_Z &&
+         !std::isinf(pt[2]);
 }
 
 void StereoProcessor::processPoints(
-  const stereo_msgs::msg::DisparityImage & disparity,
-  const cv::Mat & color,
-  const std::string & encoding,
-  const image_geometry::StereoCameraModel & model,
-  sensor_msgs::msg::PointCloud & points) const
-{
+    const stereo_msgs::msg::DisparityImage &disparity, const cv::Mat &color,
+    const std::string &encoding, const image_geometry::StereoCameraModel &model,
+    sensor_msgs::msg::PointCloud &points) const {
   // Calculate dense point cloud
-  const sensor_msgs::msg::Image & dimage = disparity.image;
+  const sensor_msgs::msg::Image &dimage = disparity.image;
   // The cv::Mat_ constructor doesn't accept a const data data pointer
   // so we remove the constness before reinterpreting into float.
   // This is "safe" since our cv::Mat is const.
-  float * data = reinterpret_cast<float *>(const_cast<uint8_t *>(&dimage.data[0]));
+  float *data =
+      reinterpret_cast<float *>(const_cast<uint8_t *>(&dimage.data[0]));
   const cv::Mat_<float> dmat(dimage.height, dimage.width, data, dimage.step);
   model.projectDisparityImageTo3d(dmat, dense_points_, true);
 
@@ -206,9 +207,10 @@ void StereoProcessor::processPoints(
     for (int32_t u = 0; u < dense_points_.rows; ++u) {
       for (int32_t v = 0; v < dense_points_.cols; ++v) {
         if (isValidPoint(dense_points_(u, v))) {
-          const cv::Vec3b & rgb = color.at<cv::Vec3b>(u, v);
+          const cv::Vec3b &rgb = color.at<cv::Vec3b>(u, v);
           int32_t rgb_packed = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
-          points.channels[0].values.push_back(*reinterpret_cast<float *>(&rgb_packed));
+          points.channels[0].values.push_back(
+              *reinterpret_cast<float *>(&rgb_packed));
         }
       }
     }
@@ -216,32 +218,32 @@ void StereoProcessor::processPoints(
     for (int32_t u = 0; u < dense_points_.rows; ++u) {
       for (int32_t v = 0; v < dense_points_.cols; ++v) {
         if (isValidPoint(dense_points_(u, v))) {
-          const cv::Vec3b & bgr = color.at<cv::Vec3b>(u, v);
+          const cv::Vec3b &bgr = color.at<cv::Vec3b>(u, v);
           int32_t rgb_packed = (bgr[2] << 16) | (bgr[1] << 8) | bgr[0];
-          points.channels[0].values.push_back(*reinterpret_cast<float *>(&rgb_packed));
+          points.channels[0].values.push_back(
+              *reinterpret_cast<float *>(&rgb_packed));
         }
       }
     }
   } else {
     RCUTILS_LOG_WARN(
-      "Could not fill color channel of the point cloud, unrecognized encoding '%s'",
-      encoding.c_str());
+        "Could not fill color channel of the point cloud, unrecognized "
+        "encoding '%s'",
+        encoding.c_str());
   }
 }
 
 void StereoProcessor::processPoints2(
-  const stereo_msgs::msg::DisparityImage & disparity,
-  const cv::Mat & color,
-  const std::string & encoding,
-  const image_geometry::StereoCameraModel & model,
-  sensor_msgs::msg::PointCloud2 & points) const
-{
+    const stereo_msgs::msg::DisparityImage &disparity, const cv::Mat &color,
+    const std::string &encoding, const image_geometry::StereoCameraModel &model,
+    sensor_msgs::msg::PointCloud2 &points) const {
   // Calculate dense point cloud
-  const sensor_msgs::msg::Image & dimage = disparity.image;
+  const sensor_msgs::msg::Image &dimage = disparity.image;
   // The cv::Mat_ constructor doesn't accept a const data data pointer
   // so we remove the constness before reinterpreting into float.
   // This is "safe" since our cv::Mat is const.
-  float * data = reinterpret_cast<float *>(const_cast<uint8_t *>(&dimage.data[0]));
+  float *data =
+      reinterpret_cast<float *>(const_cast<uint8_t *>(&dimage.data[0]));
   const cv::Mat_<float> dmat(dimage.height, dimage.width, data, dimage.step);
   model.projectDisparityImageTo3d(dmat, dense_points_, true);
 
@@ -277,13 +279,19 @@ void StereoProcessor::processPoints2(
     for (int32_t v = 0; v < dense_points_.cols; ++v, ++i) {
       if (isValidPoint(dense_points_(u, v))) {
         // x,y,z,rgba
-        memcpy(&points.data[i * points.point_step + 0], &dense_points_(u, v)[0], sizeof(float));
-        memcpy(&points.data[i * points.point_step + 4], &dense_points_(u, v)[1], sizeof(float));
-        memcpy(&points.data[i * points.point_step + 8], &dense_points_(u, v)[2], sizeof(float));
+        memcpy(&points.data[i * points.point_step + 0], &dense_points_(u, v)[0],
+               sizeof(float));
+        memcpy(&points.data[i * points.point_step + 4], &dense_points_(u, v)[1],
+               sizeof(float));
+        memcpy(&points.data[i * points.point_step + 8], &dense_points_(u, v)[2],
+               sizeof(float));
       } else {
-        memcpy(&points.data[i * points.point_step + 0], &bad_point, sizeof(float));
-        memcpy(&points.data[i * points.point_step + 4], &bad_point, sizeof(float));
-        memcpy(&points.data[i * points.point_step + 8], &bad_point, sizeof(float));
+        memcpy(&points.data[i * points.point_step + 0], &bad_point,
+               sizeof(float));
+        memcpy(&points.data[i * points.point_step + 4], &bad_point,
+               sizeof(float));
+        memcpy(&points.data[i * points.point_step + 8], &bad_point,
+               sizeof(float));
       }
     }
   }
@@ -297,9 +305,11 @@ void StereoProcessor::processPoints2(
         if (isValidPoint(dense_points_(u, v))) {
           uint8_t g = color.at<uint8_t>(u, v);
           int32_t rgb = (g << 16) | (g << 8) | g;
-          memcpy(&points.data[i * points.point_step + 12], &rgb, sizeof(int32_t));
+          memcpy(&points.data[i * points.point_step + 12], &rgb,
+                 sizeof(int32_t));
         } else {
-          memcpy(&points.data[i * points.point_step + 12], &bad_point, sizeof(float));
+          memcpy(&points.data[i * points.point_step + 12], &bad_point,
+                 sizeof(float));
         }
       }
     }
@@ -307,11 +317,13 @@ void StereoProcessor::processPoints2(
     for (int32_t u = 0; u < dense_points_.rows; ++u) {
       for (int32_t v = 0; v < dense_points_.cols; ++v, ++i) {
         if (isValidPoint(dense_points_(u, v))) {
-          const cv::Vec3b & rgb = color.at<cv::Vec3b>(u, v);
+          const cv::Vec3b &rgb = color.at<cv::Vec3b>(u, v);
           int32_t rgb_packed = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
-          memcpy(&points.data[i * points.point_step + 12], &rgb_packed, sizeof(int32_t));
+          memcpy(&points.data[i * points.point_step + 12], &rgb_packed,
+                 sizeof(int32_t));
         } else {
-          memcpy(&points.data[i * points.point_step + 12], &bad_point, sizeof(float));
+          memcpy(&points.data[i * points.point_step + 12], &bad_point,
+                 sizeof(float));
         }
       }
     }
@@ -319,18 +331,21 @@ void StereoProcessor::processPoints2(
     for (int32_t u = 0; u < dense_points_.rows; ++u) {
       for (int32_t v = 0; v < dense_points_.cols; ++v, ++i) {
         if (isValidPoint(dense_points_(u, v))) {
-          const cv::Vec3b & bgr = color.at<cv::Vec3b>(u, v);
+          const cv::Vec3b &bgr = color.at<cv::Vec3b>(u, v);
           int32_t rgb_packed = (bgr[2] << 16) | (bgr[1] << 8) | bgr[0];
-          memcpy(&points.data[i * points.point_step + 12], &rgb_packed, sizeof(int32_t));
+          memcpy(&points.data[i * points.point_step + 12], &rgb_packed,
+                 sizeof(int32_t));
         } else {
-          memcpy(&points.data[i * points.point_step + 12], &bad_point, sizeof(float));
+          memcpy(&points.data[i * points.point_step + 12], &bad_point,
+                 sizeof(float));
         }
       }
     }
   } else {
     RCUTILS_LOG_WARN(
-      "Could not fill color channel of the point cloud, unrecognized encoding '%s'",
-      encoding.c_str());
+        "Could not fill color channel of the point cloud, unrecognized "
+        "encoding '%s'",
+        encoding.c_str());
   }
 }
 
