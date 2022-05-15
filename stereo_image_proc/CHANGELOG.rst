@@ -1,3 +1,7 @@
+Forthcoming
+-----------
+* Add HWCV accelerated Block-matcher support usage in stereo_image_proc
+
 2.2.1 (2020-08-27)
 ------------------
 * remove email blasts from steve macenski (`#596 <https://github.com/ros-perception/image_pipeline/issues/596>`_)

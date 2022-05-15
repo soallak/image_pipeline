@@ -108,7 +108,7 @@ class StereoProcessor {
     } else if (current_stereo_algorithm_ == SGBM) {
       return sg_block_matcher_->getBlockSize();
     } else {
-      return -1;
+      return hwcv_matcher_.GetAggregationWindowSize();
     }
   }
 
@@ -139,7 +139,7 @@ class StereoProcessor {
     } else if (current_stereo_algorithm_ == SGBM) {
       return sg_block_matcher_->getNumDisparities();
     } else {
-      return -1;
+      return hwcv_matcher_.GetNumDisparities();
     }
   }
 
