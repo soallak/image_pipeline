@@ -250,7 +250,7 @@ endif()  # ROS_VITIS
 # image_proc kernel, all kernels smashed into a single xclbin
 #
 if(ROS_ACCELERATION)
-  if (DEFINED ROS_VITIS)
+  if (DEFINED ROS_VITIS AND NOT NO_IMAGE_PROC_KERNEL)
     #####################
     # Synth
     #####################
