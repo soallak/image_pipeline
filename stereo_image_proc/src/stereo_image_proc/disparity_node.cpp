@@ -52,6 +52,12 @@
 #include <utility>
 #include <vector>
 
+// clang-format off
+// todo: make this conditional at compile time
+#define LTTNG_UST_TRACEPOINT_PROBE_DYNAMIC_LINKAGE
+#include <slam_tracepoint_provider/tracepoint.hpp>
+// clang-format on
+
 namespace stereo_image_proc {
 
 class DisparityNode : public rclcpp::Node {
@@ -305,7 +311,13 @@ void DisparityNode::imageCb(
           ->image;
 
   // Perform block matching to find the disparities
+  auto tp_1 = this->now();
   block_matcher_.processDisparity(l_image, r_image, model_, *disp_msg);
+  auto tp_2 = this->now();
+  TP_COMPUTE_CPU(
+      this->shared_from_this(),
+      std::chrono::nanoseconds(tp_2.nanoseconds() - tp_1.nanoseconds()),
+      "stereo_image_proc:process_disparity");
 
   pub_disparity_->publish(*disp_msg);
 }

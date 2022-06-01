@@ -46,6 +46,12 @@
 // Uncomment below instead
 // #include <rcutils/assert.h>
 
+// clang-format off
+// todo: make this conditional at compile time
+#define LTTNG_UST_TRACEPOINT_PROBE_DYNAMIC_LINKAGE
+#include <slam_tracepoint_provider/tracepoint.hpp>
+// clang-format on
+
 namespace stereo_image_proc {
 
 bool StereoProcessor::process(
@@ -106,13 +112,29 @@ void StereoProcessor::processDisparity(
   static const double inv_dpp = 1.0 / DPP;
 
   // Block matcher produces 16-bit signed (fixed point) disparity image
+  auto now = std::chrono::steady_clock::now;
+  auto start = now();
+  auto end = now();
   disparity16_.create(left_rect.rows, left_rect.cols);
+
   if (current_stereo_algorithm_ == BM) {
+    start = now();
     block_matcher_->compute(left_rect, right_rect, disparity16_);
+    end = now();
+    TP_COMPUTE_CPU(nullptr, std::chrono::nanoseconds(end - start),
+                   "stereo_image_proc:block_matcher");
   } else if (current_stereo_algorithm_ == SGBM) {
+    start = now();
     sg_block_matcher_->compute(left_rect, right_rect, disparity16_);
+    end = now();
+    TP_COMPUTE_CPU(nullptr, std::chrono::nanoseconds(end - start),
+                   "stereo_image_proc:sg_block_matcher");
   } else {
+    start = now();
     hwcv_matcher_.Execute(left_rect, right_rect, disparity16_);
+    end = now();
+    TP_COMPUTE_CPU(nullptr, std::chrono::nanoseconds(end - start),
+                   "stereo_image_proc:hwcv_matcher");
   }
 
   // Fill in DisparityImage image data, converting to 32-bit float
@@ -122,12 +144,16 @@ void StereoProcessor::processDisparity(
   dimage.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
   dimage.step = dimage.width * sizeof(float);
   dimage.data.resize(dimage.step * dimage.height);
+  start = now();
   cv::Mat_<float> dmat(dimage.height, dimage.width,
                        reinterpret_cast<float *>(&dimage.data[0]), dimage.step);
   // We convert from fixed-point to float disparity and also adjust for any
   // x-offset between the principal points: d = d_fp*inv_dpp - (cx_l - cx_r)
   disparity16_.convertTo(dmat, dmat.type(), inv_dpp,
                          -(model.left().cx() - model.right().cx()));
+  end = now();
+  TP_COMPUTE_CPU(nullptr, std::chrono::nanoseconds(end - start),
+                 "stereo_image_proc:to_float");
   RCUTILS_ASSERT(dmat.data == &dimage.data[0]);
   // TODO(unknown): is_bigendian?
 
