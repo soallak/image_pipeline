@@ -29,6 +29,7 @@
   <depend>sensor_msgs</depend>
   <depend>stereo_msgs</depend>
   <depend>hwcv</depend>
+  <depend>slam_tracepoint_provider</depend>
 
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
